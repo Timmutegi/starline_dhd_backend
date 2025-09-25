@@ -74,7 +74,7 @@ check_prerequisites() {
     fi
 
     # Set Docker Compose command
-    DOCKER_COMPOSE="docker compose"
+    DOCKER_COMPOSE="sudo docker compose"
 
     # Check .env file
     if [ ! -f .env ]; then
