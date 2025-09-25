@@ -151,9 +151,9 @@ deploy_dev() {
         return
     fi
 
-    # Pull latest images
+    # Pull latest external images
     print_color "$BLUE" "📥 Pulling latest images..."
-    $DOCKER_COMPOSE -f $COMPOSE_FILE pull --quiet
+    $DOCKER_COMPOSE -f $COMPOSE_FILE pull --quiet 2>/dev/null || true
 
     # Build or restart
     if [ "$ACTION" == "build" ]; then
@@ -242,9 +242,16 @@ deploy_prod() {
         print_color "$BLUE" "📊 Monitoring stack will be enabled"
     fi
 
-    # Pull latest images
-    print_color "$BLUE" "📥 Pulling latest images..."
-    $DOCKER_COMPOSE -f $COMPOSE_FILE pull --quiet
+    # Check if backend image exists locally
+    if ! docker images | grep -q "starline-backend.*latest"; then
+        print_color "$YELLOW" "⚠️  Backend image not found locally. Building it now..."
+        $DOCKER_COMPOSE -f $COMPOSE_FILE build backend
+    fi
+
+    # Pull latest images (skip backend as it's built locally)
+    print_color "$BLUE" "📥 Pulling latest external images..."
+    # Pull only external images, not the locally built backend
+    $DOCKER_COMPOSE -f $COMPOSE_FILE pull --quiet postgres redis nginx 2>/dev/null || true
 
     # Build or restart
     if [ "$ACTION" == "build" ]; then
