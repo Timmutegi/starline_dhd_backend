@@ -31,11 +31,25 @@ services:
     image: redis:7-alpine
     container_name: starline_redis
     restart: always
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    command: >
+      sh -c '
+        if [ -n "${REDIS_PASSWORD:-}" ]; then
+          redis-server --appendonly yes --requirepass "${REDIS_PASSWORD}"
+        else
+          redis-server --appendonly yes
+        fi
+      '
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-}", "ping"]
+      test: >
+        sh -c '
+          if [ -n "${REDIS_PASSWORD:-}" ]; then
+            redis-cli --no-auth-warning -a "${REDIS_PASSWORD}" ping
+          else
+            redis-cli ping
+          fi
+        '
       interval: 10s
       timeout: 5s
       retries: 5
