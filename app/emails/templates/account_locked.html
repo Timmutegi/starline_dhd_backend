@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Security Alert - Starline</title>
+    <style>
+        .container {
+            max-width: 650px;
+            margin: 0 auto;
+            font-family: "Segoe UI", Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji" ;
+        }
+        .header {
+            background-color: #DC2626;
+            height: 150px;
+            line-height: 150px;
+            padding-right: 50px;
+            padding-bottom: 20px;
+            color: white;
+        }
+        .header h1 {
+            text-align: center;
+        }
+        .content {
+            min-height: 100px;
+        }
+        .footer {
+            height: 100px;
+            background-color: #4F46E5;
+            padding-top: 30px;
+            padding-bottom: 30px;
+            color: white;
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .footer p {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            text-align: center;
+        }
+        .footer a {
+            color: white;
+        }
+        .alert-box {
+            background-color: #FEE2E2;
+            border: 1px solid #DC2626;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <h1>⚠️ Security Alert</h1>
+            </div>
+            <div class="content">
+                <div style="max-width: 560px; padding: 20px; background: #ffffff; border-radius: 5px; margin: 40px auto; font-family: Open Sans,Helvetica,Arial; font-size: 15px; color: #666;">
+                    <div style="color: #444444; font-weight: normal;">
+                        <div style="text-align: center; font-weight: 600; font-size: 24px; padding: 10px 0; border-bottom: solid 3px #eeeeee;">Account Temporarily Locked</div>
+                        <div style="clear: both;"> </div>
+                    </div>
+                    <div style="padding: 0 30px 30px 30px; border-bottom: 3px solid #eeeeee;">
+                        <div style="font-size: 15px; line-height: 25px; padding-top: 20px;">
+                            <strong>Hi {{user_name}},</strong>
+                            <p style="margin-top: 10px;">Your account has been temporarily locked due to multiple failed login attempts. This is a security measure to protect your account from unauthorized access.</p>
+                        </div>
+
+                        <div class="alert-box">
+                            <strong style="color: #DC2626;">Account will be unlocked at:</strong>
+                            <div style="font-size: 18px; margin-top: 10px; color: #444;">{{unlock_time}}</div>
+                        </div>
+
+                        <div style="margin: 30px 0;">
+                            <h4 style="color: #444;">What happened?</h4>
+                            <ul style="line-height: 25px;">
+                                <li>Multiple incorrect password attempts were detected</li>
+                                <li>Your account has been temporarily locked for security</li>
+                                <li>The lock will automatically expire at the time shown above</li>
+                            </ul>
+
+                            <h4 style="color: #444;">What should you do?</h4>
+                            <ul style="line-height: 25px;">
+                                <li>If this was you, please wait until the unlock time to try again</li>
+                                <li>If you've forgotten your password, click the button below to reset it</li>
+                                <li>If this wasn't you, please reset your password immediately and contact support</li>
+                            </ul>
+                        </div>
+
+                        <div style="padding: 20px 0; text-align: center;">
+                            <a style="background: #4F46E5; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px;" href="{{frontend_url}}/reset-password">Reset Password</a>
+                        </div>
+
+                        <div style="font-size: 13px; color: #999; text-align: center; margin-top: 20px;">
+                            <p>If you need immediate assistance, please contact our support team.</p>
+                        </div>
+                    </div>
+                    <div style="color: #999; padding: 20px 30px; font-size: 14px;">
+                        <div>Stay safe,</div>
+                        <div>The <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}">Starline</a> Security Team</div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <p><strong><a href="mailto:{{contact_email}}">{{contact_email}}</a></strong></p>
+                <p><strong>Starline Support Team</strong></p>
+                <p><strong>Empowering quality care</strong></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

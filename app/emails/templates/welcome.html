@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Starline</title>
+    <style>
+        .container {
+            max-width: 650px;
+            margin: 0 auto;
+            font-family: "Segoe UI", Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji" ;
+        }
+        .header {
+            background-color: #4F46E5;
+            height: 150px;
+            line-height: 150px;
+            padding-right: 50px;
+            padding-bottom: 20px;
+            color: white;
+        }
+        .header h1 {
+            text-align: center;
+        }
+        .content {
+            min-height: 100px;
+        }
+        .footer {
+            height: 100px;
+            background-color: #4F46E5;
+            padding-top: 30px;
+            padding-bottom: 30px;
+            color: white;
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .footer p {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            text-align: center;
+        }
+        .footer a {
+            color: white;
+        }
+        .feature-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .feature-title {
+            color: #4F46E5;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <h1> Starline</h1>
+            </div>
+            <div class="content">
+                <div style="max-width: 560px; padding: 20px; background: #ffffff; border-radius: 5px; margin: 40px auto; font-family: Open Sans,Helvetica,Arial; font-size: 15px; color: #666;">
+                    <div style="color: #444444; font-weight: normal;">
+                        <div style="text-align: center; font-weight: 600; font-size: 24px; padding: 10px 0; border-bottom: solid 3px #eeeeee;">Welcome to {{organization_name}}!</div>
+                        <div style="clear: both;"> </div>
+                    </div>
+                    <div style="padding: 0 30px 30px 30px; border-bottom: 3px solid #eeeeee;">
+                        <div style="font-size: 15px; line-height: 25px; padding-top: 20px;">
+                            <strong>Hi {{user_name}},</strong>
+                            <p style="margin-top: 10px;">Welcome to Starline! Your account has been successfully created and verified. You can now access all the features and benefits of our platform.</p>
+                        </div>
+
+                        <div style="margin: 30px 0;">
+                            <h3 style="color: #444; font-size: 18px;">What you can do with Starline:</h3>
+
+                            <div class="feature-box">
+                                <div class="feature-title">📊 Manage Client Care</div>
+                                <div>Track and manage client information, health records, and care plans efficiently.</div>
+                            </div>
+
+                            <div class="feature-box">
+                                <div class="feature-title">📝 Documentation & Forms</div>
+                                <div>Complete and manage all necessary documentation digitally with ease.</div>
+                            </div>
+
+                            <div class="feature-box">
+                                <div class="feature-title">📅 Scheduling & Calendar</div>
+                                <div>Organize shifts, appointments, and activities in one centralized system.</div>
+                            </div>
+
+                            <div class="feature-box">
+                                <div class="feature-title">📈 Reports & Analytics</div>
+                                <div>Access comprehensive reports and insights to improve service delivery.</div>
+                            </div>
+                        </div>
+
+                        <div style="padding: 20px 0; text-align: center;">
+                            <a style="background: #4F46E5; color: #fff; padding: 12px 40px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px;" href="{{frontend_url}}">Get Started</a>
+                        </div>
+
+                        <div style="font-size: 14px; color: #999; text-align: center; margin-top: 20px;">
+                            <p>Need help? Check out our <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}/help">Help Center</a> or contact our support team.</p>
+                        </div>
+                    </div>
+                    <div style="color: #999; padding: 20px 30px; font-size: 14px;">
+                        <div>Thank you for choosing Starline!</div>
+                        <div>The <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}">Starline</a> Team</div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <p><strong><a href="mailto:{{contact_email}}">{{contact_email}}</a></strong></p>
+                <p><strong>Starline Support Team</strong></p>
+                <p><strong>Empowering quality care</strong></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

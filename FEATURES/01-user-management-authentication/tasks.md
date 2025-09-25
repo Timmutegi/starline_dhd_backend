@@ -57,10 +57,8 @@
 ## Phase 3: Advanced Security (Week 5-6)
 
 ### Two-Factor Authentication
-- [ ] Implement TOTP generation
-- [ ] Create QR code generation for 2FA setup
+- [ ] Implement OTP generation - email only
 - [ ] Build 2FA verification endpoint
-- [ ] Generate backup codes
 - [ ] Implement 2FA enable/disable flow
 - [ ] Add 2FA to login process
 
@@ -161,42 +159,11 @@
 
 ## Deployment Tasks
 
-### Infrastructure Setup
-- [ ] Configure AWS EC2 instances
-- [ ] Set up RDS PostgreSQL
-- [ ] Configure ElastiCache Redis
-- [ ] Set up CloudFront CDN
-- [ ] Configure security groups
-
-### CI/CD Pipeline
-- [ ] Set up GitHub Actions workflow
-- [ ] Configure automated testing
-- [ ] Set up Docker image building
-- [ ] Configure deployment to staging
-- [ ] Set up production deployment
-
 ### Monitoring & Logging
-- [ ] Configure CloudWatch logging
 - [ ] Set up authentication metrics
 - [ ] Create alerting rules
 - [ ] Build monitoring dashboard
 - [ ] Set up error tracking (Sentry)
-
-## Migration Tasks
-
-### Data Migration
-- [ ] Create migration scripts for existing users
-- [ ] Map old roles to new system
-- [ ] Migrate password hashes
-- [ ] Transfer user preferences
-- [ ] Validate migrated data
-
-### Backward Compatibility
-- [ ] Create legacy API endpoints
-- [ ] Implement data transformation layer
-- [ ] Support old authentication tokens
-- [ ] Create deprecation notices
-- [ ] Plan sunset timeline
 
 ## Code Implementation Structure
 
