@@ -172,3 +172,50 @@ class EmailService:
             template_name="client_credentials.html",
             context=context
         )
+
+    @staticmethod
+    async def send_staff_credentials(
+        email: str,
+        full_name: str,
+        username: str,
+        password: str,
+        employee_id: str,
+        organization_name: str,
+        role_name: str,
+        department: Optional[str] = None,
+        hire_date: Optional[str] = None,
+        supervisor_name: Optional[str] = None,
+        supervisor_email: Optional[str] = None,
+        support_email: Optional[str] = None,
+        support_phone: Optional[str] = None,
+        hr_email: Optional[str] = None
+    ) -> bool:
+        from datetime import datetime
+
+        context = {
+            "organization_name": organization_name,
+            "full_name": full_name,
+            "username": username,
+            "email": email,
+            "password": password,
+            "employee_id": employee_id,
+            "role_name": role_name,
+            "department": department or "Not Specified",
+            "hire_date": hire_date or "Not Specified",
+            "supervisor_name": supervisor_name or "Not Assigned",
+            "supervisor_email": supervisor_email or settings.DEFAULT_ADMIN_EMAIL,
+            "login_url": settings.FRONTEND_URL,
+            "frontend_url": settings.FRONTEND_URL,
+            "support_email": support_email or settings.DEFAULT_ADMIN_EMAIL,
+            "support_phone": support_phone or "Contact Administrator",
+            "hr_email": hr_email or settings.DEFAULT_ADMIN_EMAIL,
+            "contact_email": settings.DEFAULT_ADMIN_EMAIL,
+            "current_year": datetime.now().year
+        }
+
+        return await EmailService.send_email(
+            to=email,
+            subject=f"Welcome to {organization_name} - Your Staff Account Details",
+            template_name="staff_credentials.html",
+            context=context
+        )

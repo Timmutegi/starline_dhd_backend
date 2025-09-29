@@ -2,6 +2,8 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, engine, Base
 from app.core.security import get_password_hash
 from app.models.user import User, Organization, Role, Permission, UserStatus
+from app.models.staff import Staff  # Import staff models to ensure tables are created
+from app.models.client import Client  # Import client models to ensure tables are created
 from app.core.config import settings
 import logging
 import uuid
@@ -49,6 +51,16 @@ def init_db():
             ("clients", "read", "View clients"),
             ("clients", "update", "Update clients"),
             ("clients", "delete", "Delete clients"),
+            ("staff", "create", "Create staff members"),
+            ("staff", "read", "View staff information"),
+            ("staff", "update", "Update staff information"),
+            ("staff", "delete", "Remove staff members"),
+            ("staff", "terminate", "Terminate staff employment"),
+            ("staff", "manage_training", "Manage staff training records"),
+            ("staff", "manage_certifications", "Manage staff certifications"),
+            ("staff", "manage_performance", "Manage staff performance reviews"),
+            ("staff", "view_payroll", "View staff payroll information"),
+            ("staff", "manage_assignments", "Manage staff assignments"),
             ("documentation", "create", "Create documentation"),
             ("documentation", "read", "View documentation"),
             ("documentation", "update", "Update documentation"),
@@ -83,21 +95,42 @@ def init_db():
 
         roles_data = [
             ("Super Admin", "Full system access", True, list(permissions.values())),
-            ("Organization Admin", "Manage organization and users", False, [
+            ("Organization Admin", "Manage organization, users, and staff", False, [
                 permissions["users:create"], permissions["users:read"],
                 permissions["users:update"], permissions["users:delete"],
                 permissions["roles:read"], permissions["organizations:read"],
-                permissions["organizations:update"]
+                permissions["organizations:update"], permissions["staff:create"],
+                permissions["staff:read"], permissions["staff:update"],
+                permissions["staff:delete"], permissions["staff:terminate"],
+                permissions["staff:manage_training"], permissions["staff:manage_certifications"],
+                permissions["staff:manage_performance"], permissions["staff:view_payroll"],
+                permissions["staff:manage_assignments"]
+            ]),
+            ("HR Manager", "Comprehensive staff management", False, [
+                permissions["staff:create"], permissions["staff:read"],
+                permissions["staff:update"], permissions["staff:terminate"],
+                permissions["staff:manage_training"], permissions["staff:manage_certifications"],
+                permissions["staff:manage_performance"], permissions["staff:view_payroll"],
+                permissions["staff:manage_assignments"], permissions["users:read"],
+                permissions["users:update"], permissions["reports:read"]
+            ]),
+            ("Supervisor", "Staff oversight and performance management", False, [
+                permissions["staff:read"], permissions["staff:update"],
+                permissions["staff:manage_training"], permissions["staff:manage_performance"],
+                permissions["staff:manage_assignments"], permissions["clients:read"],
+                permissions["documentation:read"], permissions["reports:read"]
             ]),
             ("Support Staff", "Client care and documentation", False, [
                 permissions["clients:read"], permissions["clients:update"],
                 permissions["documentation:create"], permissions["documentation:read"],
-                permissions["documentation:update"], permissions["reports:read"]
+                permissions["documentation:update"], permissions["reports:read"],
+                permissions["staff:read"]  # Can view basic staff info
             ]),
             ("Billing Admin", "Financial and billing access", False, [
                 permissions["billing:create"], permissions["billing:read"],
                 permissions["billing:update"], permissions["billing:process"],
-                permissions["reports:read"], permissions["reports:export"]
+                permissions["reports:read"], permissions["reports:export"],
+                permissions["staff:read"], permissions["staff:view_payroll"]
             ]),
         ]
 

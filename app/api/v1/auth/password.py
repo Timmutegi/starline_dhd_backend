@@ -170,6 +170,7 @@ async def reset_password(
     user.email_verification_otp = None
     user.email_verification_otp_expires = None
     user.password_changed_at = datetime.now(timezone.utc)
+    user.must_change_password = False  # Clear mandatory password change flag
 
     db.add(AuthAuditLog(
         user_id=user.id,
@@ -233,6 +234,7 @@ async def change_password(
 
     current_user.password_hash = new_password_hash
     current_user.password_changed_at = datetime.now(timezone.utc)
+    current_user.must_change_password = False  # Clear mandatory password change flag
 
     db.add(AuthAuditLog(
         user_id=current_user.id,

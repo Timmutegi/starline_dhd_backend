@@ -11,6 +11,7 @@ from app.core.database import engine, Base
 from app.api.v1.auth import login, logout, password
 from app.api.v1.users import crud as user_crud
 from app.api.v1.clients import router as client_router
+from app.api.v1.staff import router as staff_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -105,6 +106,12 @@ app.include_router(
     client_router.router,
     prefix=f"{settings.API_V1_STR}/clients",
     tags=["Clients"]
+)
+
+app.include_router(
+    staff_router.router,
+    prefix=f"{settings.API_V1_STR}/staff",
+    tags=["Staff Management"]
 )
 
 if __name__ == "__main__":
