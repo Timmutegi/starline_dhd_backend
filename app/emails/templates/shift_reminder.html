@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shift Reminder - Starline</title>
+    <style>
+        .container {
+            max-width: 650px;
+            margin: 0 auto;
+            font-family: "Segoe UI", Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji" ;
+        }
+        .header {
+            background-color: #4F46E5;
+            height: 150px;
+            line-height: 150px;
+            padding-right: 50px;
+            padding-bottom: 20px;
+            color: white;
+        }
+        .header h1 {
+            text-align: center;
+        }
+        .content {
+            min-height: 100px;
+        }
+        .footer {
+            height: 100px;
+            background-color: #4F46E5;
+            padding-top: 30px;
+            padding-bottom: 30px;
+            color: white;
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .footer p {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            text-align: center;
+        }
+        .footer a {
+            color: white;
+        }
+        .reminder-details {
+            background-color: #f0f9ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #3B82F6;
+        }
+        .reminder-details h3 {
+            margin-top: 0;
+            color: #3B82F6;
+        }
+        .detail-row {
+            display: flex;
+            margin: 10px 0;
+        }
+        .detail-label {
+            font-weight: bold;
+            width: 120px;
+        }
+        .time-highlight {
+            background-color: #dbeafe;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+            margin: 20px 0;
+            border: 2px solid #3B82F6;
+        }
+        .time-highlight h2 {
+            margin: 0;
+            color: #3B82F6;
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <h1> Starline</h1>
+            </div>
+            <div class="content">
+                <div style="max-width: 560px; padding: 20px; background: #ffffff; border-radius: 5px; margin: 40px auto; font-family: Open Sans,Helvetica,Arial; font-size: 15px; color: #666;">
+                    <div style="color: #444444; font-weight: normal;">
+                        <div style="text-align: center; font-weight: 600; font-size: 24px; padding: 10px 0; border-bottom: solid 3px #eeeeee;">Shift Reminder</div>
+                        <div style="clear: both;"> </div>
+                    </div>
+                    <div style="padding: 0 30px 30px 30px; border-bottom: 3px solid #eeeeee;">
+                        <div style="font-size: 15px; line-height: 25px; padding-top: 20px;">
+                            <strong>Hi {{staff_name}},</strong>
+                            <span style="display: block; margin-top: 10px;">This is a friendly reminder about your upcoming shift {{reminder_type}}:</span>
+                        </div>
+
+                        <div class="time-highlight">
+                            <h2>{{shift_start_time}}</h2>
+                            <p style="margin: 5px 0; color: #666; font-size: 16px;">{{shift_date}}</p>
+                        </div>
+
+                        <div class="reminder-details">
+                            <h3>Shift Details</h3>
+                            <div class="detail-row">
+                                <div class="detail-label">Time:</div>
+                                <div>{{start_time}} - {{end_time}}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Duration:</div>
+                                <div>{{duration}}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Location:</div>
+                                <div>{{location}}</div>
+                            </div>
+                            {% if clients %}
+                            <div class="detail-row">
+                                <div class="detail-label">Clients:</div>
+                                <div>{{clients}}</div>
+                            </div>
+                            {% endif %}
+                            {% if break_times %}
+                            <div class="detail-row">
+                                <div class="detail-label">Breaks:</div>
+                                <div>{{break_times}}</div>
+                            </div>
+                            {% endif %}
+                            {% if supervisor_name %}
+                            <div class="detail-row">
+                                <div class="detail-label">Supervisor:</div>
+                                <div>{{supervisor_name}} - {{supervisor_phone}}</div>
+                            </div>
+                            {% endif %}
+                            {% if notes %}
+                            <div class="detail-row">
+                                <div class="detail-label">Notes:</div>
+                                <div>{{notes}}</div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        {% if checklist %}
+                        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                            <strong>Pre-Shift Checklist:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                {% for item in checklist %}
+                                <li>{{item}}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+
+                        <div style="padding: 20px 0 30px 0; text-align: center;">
+                            <a style="background: #3B82F6; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px;" href="{{shift_url}}">View Shift Details</a>
+                        </div>
+
+                        <div style="font-size: 13px; color: #999; text-align: center;">
+                            <p>If you have any questions or need to report an absence, please contact your supervisor immediately.</p>
+                            <p><strong>Emergency Contact:</strong> {{emergency_phone}}</p>
+                        </div>
+                    </div>
+                    <div style="color: #999; padding: 20px 30px; font-size: 14px;">
+                        <div>Thank you!</div>
+                        <div>The <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}">Starline</a> Team</div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <p><strong><a href="mailto:{{contact_email}}">{{contact_email}}</a></strong></p>
+                <p><strong>Starline Support Team</strong></p>
+                <p><strong>Empowering quality care</strong></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

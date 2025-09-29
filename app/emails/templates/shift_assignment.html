@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Shift Assignment - Starline</title>
+    <style>
+        .container {
+            max-width: 650px;
+            margin: 0 auto;
+            font-family: "Segoe UI", Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji" ;
+        }
+        .header {
+            background-color: #4F46E5;
+            height: 150px;
+            line-height: 150px;
+            padding-right: 50px;
+            padding-bottom: 20px;
+            color: white;
+        }
+        .header h1 {
+            text-align: center;
+        }
+        .content {
+            min-height: 100px;
+        }
+        .footer {
+            height: 100px;
+            background-color: #4F46E5;
+            padding-top: 30px;
+            padding-bottom: 30px;
+            color: white;
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .footer p {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            text-align: center;
+        }
+        .footer a {
+            color: white;
+        }
+        .shift-details {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .shift-details h3 {
+            margin-top: 0;
+            color: #4F46E5;
+        }
+        .detail-row {
+            display: flex;
+            margin: 10px 0;
+        }
+        .detail-label {
+            font-weight: bold;
+            width: 120px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <h1> Starline</h1>
+            </div>
+            <div class="content">
+                <div style="max-width: 560px; padding: 20px; background: #ffffff; border-radius: 5px; margin: 40px auto; font-family: Open Sans,Helvetica,Arial; font-size: 15px; color: #666;">
+                    <div style="color: #444444; font-weight: normal;">
+                        <div style="text-align: center; font-weight: 600; font-size: 24px; padding: 10px 0; border-bottom: solid 3px #eeeeee;">New Shift Assignment</div>
+                        <div style="clear: both;"> </div>
+                    </div>
+                    <div style="padding: 0 30px 30px 30px; border-bottom: 3px solid #eeeeee;">
+                        <div style="font-size: 15px; line-height: 25px; padding-top: 20px;">
+                            <strong>Hi {{staff_name}},</strong>
+                            <span style="display: block; margin-top: 10px;">You have been assigned to a new shift. Please review the details below:</span>
+                        </div>
+
+                        <div class="shift-details">
+                            <h3>Shift Details</h3>
+                            <div class="detail-row">
+                                <div class="detail-label">Date:</div>
+                                <div>{{shift_date}}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Time:</div>
+                                <div>{{start_time}} - {{end_time}}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Location:</div>
+                                <div>{{location}}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Type:</div>
+                                <div>{{shift_type}}</div>
+                            </div>
+                            {% if clients %}
+                            <div class="detail-row">
+                                <div class="detail-label">Clients:</div>
+                                <div>{{clients}}</div>
+                            </div>
+                            {% endif %}
+                            {% if notes %}
+                            <div class="detail-row">
+                                <div class="detail-label">Notes:</div>
+                                <div>{{notes}}</div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div style="padding: 10px 0 30px 0; text-align: center;">
+                            <a style="background: #4F46E5; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px;" href="{{dashboard_url}}">View Schedule</a>
+                        </div>
+
+                        <div style="font-size: 13px; color: #999; text-align: center;">
+                            <p>Please confirm your availability or contact your supervisor if you have any conflicts.</p>
+                        </div>
+                    </div>
+                    <div style="color: #999; padding: 20px 30px; font-size: 14px;">
+                        <div>Thank you!</div>
+                        <div>The <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}">Starline</a> Team</div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <p><strong><a href="mailto:{{contact_email}}">{{contact_email}}</a></strong></p>
+                <p><strong>Starline Support Team</strong></p>
+                <p><strong>Empowering quality care</strong></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

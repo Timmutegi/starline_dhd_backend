@@ -49,6 +49,10 @@ class StaffCreate(StaffBase):
     email: EmailStr
     phone: Optional[str] = None
     role_id: UUID
+    # Optional custom permissions (if not provided, uses role's default permissions)
+    custom_permission_ids: Optional[List[UUID]] = None
+    # Whether to use custom permissions instead of role permissions
+    use_custom_permissions: bool = False
 
     @validator('employee_id')
     def validate_employee_id(cls, v):
@@ -74,6 +78,7 @@ class StaffUpdate(BaseModel):
     pay_type: Optional[PayType] = None
     fte_percentage: Optional[Decimal] = None
     notes: Optional[str] = None
+    role_id: Optional[UUID] = None
 
 class UserInfo(BaseModel):
     id: UUID
@@ -465,3 +470,13 @@ class StaffListResponse(BaseModel):
     page: int
     size: int
     pages: int
+
+# Permission assignment schemas
+class StaffPermissionUpdate(BaseModel):
+    role_id: Optional[UUID] = None
+    custom_permission_ids: Optional[List[UUID]] = None
+    use_custom_permissions: bool = False
+
+class PermissionAssignmentResponse(BaseModel):
+    message: str
+    success: bool

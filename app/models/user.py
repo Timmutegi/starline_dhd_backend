@@ -12,6 +12,24 @@ class UserStatus(enum.Enum):
     SUSPENDED = "suspended"
     PENDING = "pending"
 
+# Association tables need to be defined before the classes that use them
+role_permissions = Table(
+    'role_permissions',
+    Base.metadata,
+    Column('role_id', UUID(as_uuid=True), ForeignKey('roles.id', ondelete="CASCADE"), primary_key=True),
+    Column('permission_id', UUID(as_uuid=True), ForeignKey('permissions.id', ondelete="CASCADE"), primary_key=True),
+    Column('created_at', DateTime, default=datetime.utcnow)
+)
+
+# User-specific permissions (overrides role permissions when use_custom_permissions is True)
+user_permissions = Table(
+    'user_permissions',
+    Base.metadata,
+    Column('user_id', UUID(as_uuid=True), ForeignKey('users.id', ondelete="CASCADE"), primary_key=True),
+    Column('permission_id', UUID(as_uuid=True), ForeignKey('permissions.id', ondelete="CASCADE"), primary_key=True),
+    Column('created_at', DateTime, default=datetime.utcnow)
+)
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -62,6 +80,7 @@ class User(Base):
     lockout_until = Column(DateTime, nullable=True)
     must_change_password = Column(Boolean, default=False)
     password_changed_at = Column(DateTime, default=datetime.utcnow)
+    use_custom_permissions = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -70,18 +89,11 @@ class User(Base):
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuthAuditLog", back_populates="user", cascade="all, delete-orphan")
     password_history = relationship("PasswordHistory", back_populates="user", cascade="all, delete-orphan")
+    custom_permissions = relationship("Permission", secondary=user_permissions, backref="users_with_custom")
 
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
-
-role_permissions = Table(
-    'role_permissions',
-    Base.metadata,
-    Column('role_id', UUID(as_uuid=True), ForeignKey('roles.id', ondelete="CASCADE"), primary_key=True),
-    Column('permission_id', UUID(as_uuid=True), ForeignKey('permissions.id', ondelete="CASCADE"), primary_key=True),
-    Column('created_at', DateTime, default=datetime.utcnow)
-)
 
 class Role(Base):
     __tablename__ = "roles"

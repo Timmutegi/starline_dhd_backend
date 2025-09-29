@@ -10,7 +10,7 @@ import string
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_role
 from app.core.security import get_password_hash
-from app.models.user import User, UserStatus, Organization
+from app.models.user import User, UserStatus, Organization, Role, Permission
 from app.models.client import (
     Client, ClientContact, ClientLocation, ClientAssignment,
     CarePlan, ClientNote, ClientMedication, ClientInsurance
@@ -24,7 +24,7 @@ from app.schemas.client import (
     ClientNoteCreate, ClientNoteUpdate, ClientNoteResponse,
     ClientMedicationCreate, ClientMedicationUpdate, ClientMedicationResponse,
     ClientInsuranceCreate, ClientInsuranceUpdate, ClientInsuranceResponse,
-    ClientSearchParams
+    ClientSearchParams, ClientPermissionUpdate, ClientPermissionResponse
 )
 from app.services.email_service import EmailService
 
@@ -65,6 +65,28 @@ async def create_client(
             detail="Email already registered"
         )
 
+    # Validate role if provided
+    role = None
+    if client_data.role_id:
+        role = db.query(Role).filter(Role.id == client_data.role_id).first()
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Role not found"
+            )
+
+    # Validate custom permissions if provided
+    custom_permissions = []
+    if client_data.use_custom_permissions and client_data.custom_permission_ids:
+        custom_permissions = db.query(Permission).filter(
+            Permission.id.in_(client_data.custom_permission_ids)
+        ).all()
+        if len(custom_permissions) != len(client_data.custom_permission_ids):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="One or more permissions not found"
+            )
+
     # Generate secure password
     temp_password = generate_secure_password()
 
@@ -76,10 +98,12 @@ async def create_client(
         password_hash=get_password_hash(temp_password),
         first_name=client_data.first_name,
         last_name=client_data.last_name,
+        role_id=client_data.role_id,
         status=UserStatus.ACTIVE,
         email_verified=False,
         must_change_password=True,
-        password_changed_at=datetime.utcnow()
+        password_changed_at=datetime.utcnow(),
+        use_custom_permissions=client_data.use_custom_permissions
     )
     db.add(user)
     db.flush()  # Get user ID without committing
@@ -107,6 +131,11 @@ async def create_client(
         created_by=current_user.id
     )
     db.add(client)
+    db.flush()  # Get the client ID
+
+    # Assign custom permissions if provided
+    if client_data.use_custom_permissions and custom_permissions:
+        user.custom_permissions = custom_permissions
 
     try:
         db.commit()
@@ -508,3 +537,85 @@ async def delete_client_contact(
     db.commit()
 
     return None
+
+@router.put("/{client_id}/permissions", response_model=ClientPermissionResponse)
+async def update_client_permissions(
+    client_id: UUID,
+    permission_update: ClientPermissionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["Super Admin", "Organization Admin"]))
+):
+    """Update client's role and/or custom permissions."""
+
+    client = db.query(Client).options(
+        joinedload(Client.user)
+    ).filter(
+        Client.id == client_id,
+        Client.organization_id == current_user.organization_id
+    ).first()
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found"
+        )
+
+    if not client.user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Client does not have a user account"
+        )
+
+    try:
+        # Update role if provided
+        if permission_update.role_id:
+            role = db.query(Role).filter(Role.id == permission_update.role_id).first()
+            if not role:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Role not found"
+                )
+            client.user.role_id = permission_update.role_id
+
+        # Update custom permissions settings
+        client.user.use_custom_permissions = permission_update.use_custom_permissions
+
+        # Update custom permissions if provided
+        if permission_update.use_custom_permissions:
+            if permission_update.custom_permission_ids:
+                # Validate permissions exist
+                custom_permissions = db.query(Permission).filter(
+                    Permission.id.in_(permission_update.custom_permission_ids)
+                ).all()
+                if len(custom_permissions) != len(permission_update.custom_permission_ids):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="One or more permissions not found"
+                    )
+                # Assign custom permissions
+                client.user.custom_permissions = custom_permissions
+            else:
+                # Clear custom permissions if none provided
+                client.user.custom_permissions = []
+        else:
+            # Clear custom permissions when not using custom permissions
+            client.user.custom_permissions = []
+
+        client.user.updated_at = datetime.utcnow()
+        client.updated_at = datetime.utcnow()
+        db.commit()
+
+        return ClientPermissionResponse(
+            message=f"Permissions updated successfully for {client.full_name}",
+            success=True
+        )
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update permissions: {str(e)}"
+        )

@@ -12,6 +12,9 @@ from app.api.v1.auth import login, logout, password
 from app.api.v1.users import crud as user_crud
 from app.api.v1.clients import router as client_router
 from app.api.v1.staff import router as staff_router
+from app.api.v1.roles import router as roles_router
+from app.api.v1.scheduling import router as scheduling_router
+from app.api.v1.scheduling import time_clock, appointments, availability, calendar
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -112,6 +115,42 @@ app.include_router(
     staff_router.router,
     prefix=f"{settings.API_V1_STR}/staff",
     tags=["Staff Management"]
+)
+
+app.include_router(
+    roles_router.router,
+    prefix=f"{settings.API_V1_STR}/roles",
+    tags=["Role Management"]
+)
+
+app.include_router(
+    scheduling_router.router,
+    prefix=f"{settings.API_V1_STR}/scheduling",
+    tags=["Scheduling"]
+)
+
+app.include_router(
+    time_clock.router,
+    prefix=f"{settings.API_V1_STR}/scheduling/time-clock",
+    tags=["Time Clock"]
+)
+
+app.include_router(
+    appointments.router,
+    prefix=f"{settings.API_V1_STR}/scheduling/appointments",
+    tags=["Appointments"]
+)
+
+app.include_router(
+    availability.router,
+    prefix=f"{settings.API_V1_STR}/scheduling/availability",
+    tags=["Staff Availability"]
+)
+
+app.include_router(
+    calendar.router,
+    prefix=f"{settings.API_V1_STR}/scheduling/calendar",
+    tags=["Calendar"]
 )
 
 if __name__ == "__main__":

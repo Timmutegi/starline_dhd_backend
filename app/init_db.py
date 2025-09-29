@@ -4,6 +4,7 @@ from app.core.security import get_password_hash
 from app.models.user import User, Organization, Role, Permission, UserStatus
 from app.models.staff import Staff  # Import staff models to ensure tables are created
 from app.models.client import Client  # Import client models to ensure tables are created
+from app.models.scheduling import *  # Import scheduling models to ensure tables are created
 from app.core.config import settings
 import logging
 import uuid
@@ -72,6 +73,22 @@ def init_db():
             ("billing", "read", "View billing"),
             ("billing", "update", "Update billing"),
             ("billing", "process", "Process payments"),
+            # Scheduling & Calendar permissions
+            ("scheduling", "create", "Create schedules and shifts"),
+            ("scheduling", "read", "View schedules and shifts"),
+            ("scheduling", "update", "Update schedules and shifts"),
+            ("scheduling", "delete", "Delete schedules and shifts"),
+            ("appointments", "create", "Create appointments"),
+            ("appointments", "read", "View appointments"),
+            ("appointments", "update", "Update appointments"),
+            ("appointments", "delete", "Delete appointments"),
+            ("time_clock", "create", "Clock in/out and time tracking"),
+            ("time_clock", "read", "View time entries"),
+            ("time_clock", "update", "Adjust time entries"),
+            ("calendar", "create", "Create calendar events"),
+            ("calendar", "read", "View calendar events"),
+            ("calendar", "update", "Update calendar events"),
+            ("calendar", "delete", "Delete calendar events"),
         ]
 
         permissions = {}

@@ -4,7 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 from app.core.database import get_db
 from app.core.security import get_password_hash, generate_random_password
-from app.models.user import User, Organization, Role, UserStatus
+from app.models.user import User, Organization, Role, UserStatus, Permission
 from app.models.staff import Staff, EmploymentStatus
 from app.middleware.auth import get_current_user, require_permission
 from app.schemas.staff import (
@@ -13,7 +13,9 @@ from app.schemas.staff import (
     StaffResponse,
     StaffCreateResponse,
     StaffSummary,
-    StaffListResponse
+    StaffListResponse,
+    StaffPermissionUpdate,
+    PermissionAssignmentResponse
 )
 from app.schemas.auth import MessageResponse
 from app.services.email_service import EmailService
@@ -96,6 +98,18 @@ async def create_staff(
                 detail="Role not found"
             )
 
+        # Validate custom permissions if provided
+        custom_permissions = []
+        if staff_data.use_custom_permissions and staff_data.custom_permission_ids:
+            custom_permissions = db.query(Permission).filter(
+                Permission.id.in_(staff_data.custom_permission_ids)
+            ).all()
+            if len(custom_permissions) != len(staff_data.custom_permission_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="One or more permissions not found"
+                )
+
         # Validate supervisor if provided
         supervisor = None
         if staff_data.supervisor_id:
@@ -126,7 +140,8 @@ async def create_staff(
             role_id=staff_data.role_id,
             status=UserStatus.ACTIVE,  # Staff are active immediately
             email_verified=True,  # Skip email verification for staff
-            must_change_password=True  # Force password change on first login
+            must_change_password=True,  # Force password change on first login
+            use_custom_permissions=staff_data.use_custom_permissions
         )
 
         db.add(new_user)
@@ -159,6 +174,12 @@ async def create_staff(
         )
 
         db.add(new_staff)
+        db.flush()  # Get the staff ID
+
+        # Assign custom permissions if provided
+        if staff_data.use_custom_permissions and custom_permissions:
+            new_user.custom_permissions = custom_permissions
+
         db.commit()
         db.refresh(new_staff)
 
@@ -515,3 +536,80 @@ async def reset_staff_password(
         message=f"Password reset successfully for {staff.full_name}. New credentials sent via email.",
         success=True
     )
+
+@router.put("/{staff_id}/permissions", response_model=PermissionAssignmentResponse)
+async def update_staff_permissions(
+    staff_id: UUID,
+    permission_update: StaffPermissionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("staff", "update"))
+):
+    """Update staff member's role and/or custom permissions."""
+
+    staff = db.query(Staff).options(
+        joinedload(Staff.user)
+    ).filter(
+        Staff.id == staff_id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff member not found"
+        )
+
+    try:
+        # Update role if provided
+        if permission_update.role_id:
+            role = db.query(Role).filter(Role.id == permission_update.role_id).first()
+            if not role:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Role not found"
+                )
+            staff.user.role_id = permission_update.role_id
+
+        # Update custom permissions settings
+        staff.user.use_custom_permissions = permission_update.use_custom_permissions
+
+        # Update custom permissions if provided
+        if permission_update.use_custom_permissions:
+            if permission_update.custom_permission_ids:
+                # Validate permissions exist
+                custom_permissions = db.query(Permission).filter(
+                    Permission.id.in_(permission_update.custom_permission_ids)
+                ).all()
+                if len(custom_permissions) != len(permission_update.custom_permission_ids):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="One or more permissions not found"
+                    )
+                # Assign custom permissions
+                staff.user.custom_permissions = custom_permissions
+            else:
+                # Clear custom permissions if none provided
+                staff.user.custom_permissions = []
+        else:
+            # Clear custom permissions when not using custom permissions
+            staff.user.custom_permissions = []
+
+        staff.user.updated_at = datetime.now(timezone.utc)
+        staff.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
+        return PermissionAssignmentResponse(
+            message=f"Permissions updated successfully for {staff.full_name}",
+            success=True
+        )
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating staff permissions: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update permissions"
+        )

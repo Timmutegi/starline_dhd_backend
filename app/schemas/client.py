@@ -31,6 +31,10 @@ class ClientCreate(ClientBase):
     email: EmailStr
     send_credentials: bool = True
     admission_date: Optional[date] = None
+    # Role and permission assignment for client user account
+    role_id: Optional[UUID] = None
+    custom_permission_ids: Optional[List[UUID]] = None
+    use_custom_permissions: bool = False
 
     @validator('admission_date', pre=True, always=True)
     def set_admission_date(cls, v):
@@ -355,3 +359,13 @@ class ClientSearchParams(BaseModel):
     page_size: int = 20
     sort_by: str = "created_at"
     sort_order: str = "desc"
+
+# Permission assignment schemas for clients
+class ClientPermissionUpdate(BaseModel):
+    role_id: Optional[UUID] = None
+    custom_permission_ids: Optional[List[UUID]] = None
+    use_custom_permissions: bool = False
+
+class ClientPermissionResponse(BaseModel):
+    message: str
+    success: bool

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule Published - Starline</title>
+    <style>
+        .container {
+            max-width: 650px;
+            margin: 0 auto;
+            font-family: "Segoe UI", Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji" ;
+        }
+        .header {
+            background-color: #4F46E5;
+            height: 150px;
+            line-height: 150px;
+            padding-right: 50px;
+            padding-bottom: 20px;
+            color: white;
+        }
+        .header h1 {
+            text-align: center;
+        }
+        .content {
+            min-height: 100px;
+        }
+        .footer {
+            height: 100px;
+            background-color: #4F46E5;
+            padding-top: 30px;
+            padding-bottom: 30px;
+            color: white;
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .footer p {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            text-align: center;
+        }
+        .footer a {
+            color: white;
+        }
+        .schedule-details {
+            background-color: #f0f9ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #3B82F6;
+        }
+        .schedule-details h3 {
+            margin-top: 0;
+            color: #3B82F6;
+        }
+        .detail-row {
+            display: flex;
+            margin: 10px 0;
+        }
+        .detail-label {
+            font-weight: bold;
+            width: 120px;
+        }
+        .shift-summary {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <h1> Starline</h1>
+            </div>
+            <div class="content">
+                <div style="max-width: 560px; padding: 20px; background: #ffffff; border-radius: 5px; margin: 40px auto; font-family: Open Sans,Helvetica,Arial; font-size: 15px; color: #666;">
+                    <div style="color: #444444; font-weight: normal;">
+                        <div style="text-align: center; font-weight: 600; font-size: 24px; padding: 10px 0; border-bottom: solid 3px #eeeeee;">Schedule Published</div>
+                        <div style="clear: both;"> </div>
+                    </div>
+                    <div style="padding: 0 30px 30px 30px; border-bottom: 3px solid #eeeeee;">
+                        <div style="font-size: 15px; line-height: 25px; padding-top: 20px;">
+                            <strong>Hi {{staff_name}},</strong>
+                            <span style="display: block; margin-top: 10px;">A new schedule has been published and is now available for review. Your shifts for this period are outlined below:</span>
+                        </div>
+
+                        <div class="schedule-details">
+                            <h3>{{schedule_name}}</h3>
+                            <div class="detail-row">
+                                <div class="detail-label">Period:</div>
+                                <div>{{start_date}} - {{end_date}}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Published:</div>
+                                <div>{{published_date}}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Published by:</div>
+                                <div>{{published_by}}</div>
+                            </div>
+                        </div>
+
+                        {% if shift_summary %}
+                        <div class="shift-summary">
+                            <strong>Your Shifts Summary:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Total shifts: {{total_shifts}}</li>
+                                <li>Total hours: {{total_hours}}</li>
+                                {% if overtime_hours %}
+                                <li>Overtime hours: {{overtime_hours}}</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                        {% endif %}
+
+                        <div style="padding: 20px 0 30px 0; text-align: center;">
+                            <a style="background: #3B82F6; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px;" href="{{schedule_url}}">View Full Schedule</a>
+                        </div>
+
+                        <div style="font-size: 13px; color: #999; text-align: center;">
+                            <p>Please review your shifts and notify your supervisor of any conflicts as soon as possible.</p>
+                            <p>If you have any questions or concerns about your schedule, please don't hesitate to reach out.</p>
+                        </div>
+                    </div>
+                    <div style="color: #999; padding: 20px 30px; font-size: 14px;">
+                        <div>Thank you!</div>
+                        <div>The <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}">Starline</a> Team</div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <p><strong><a href="mailto:{{contact_email}}">{{contact_email}}</a></strong></p>
+                <p><strong>Starline Support Team</strong></p>
+                <p><strong>Empowering quality care</strong></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
