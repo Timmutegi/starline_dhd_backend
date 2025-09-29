@@ -5,6 +5,7 @@ from app.models.user import User, Organization, Role, Permission, UserStatus
 from app.models.staff import Staff  # Import staff models to ensure tables are created
 from app.models.client import Client  # Import client models to ensure tables are created
 from app.models.scheduling import *  # Import scheduling models to ensure tables are created
+from app.models.audit_log import AuditLog, AuditSetting, AuditExport, ComplianceViolation  # Import audit models
 from app.core.config import settings
 import logging
 import uuid
@@ -89,6 +90,13 @@ def init_db():
             ("calendar", "read", "View calendar events"),
             ("calendar", "update", "Update calendar events"),
             ("calendar", "delete", "Delete calendar events"),
+            # Audit & Compliance permissions
+            ("audit", "read", "View audit logs"),
+            ("audit", "export", "Export audit logs"),
+            ("audit", "manage_settings", "Manage audit settings"),
+            ("compliance", "read", "View compliance reports"),
+            ("compliance", "manage_violations", "Manage compliance violations"),
+            ("compliance", "generate_reports", "Generate compliance reports"),
         ]
 
         permissions = {}
@@ -121,7 +129,10 @@ def init_db():
                 permissions["staff:delete"], permissions["staff:terminate"],
                 permissions["staff:manage_training"], permissions["staff:manage_certifications"],
                 permissions["staff:manage_performance"], permissions["staff:view_payroll"],
-                permissions["staff:manage_assignments"]
+                permissions["staff:manage_assignments"], permissions["audit:read"],
+                permissions["audit:export"], permissions["audit:manage_settings"],
+                permissions["compliance:read"], permissions["compliance:manage_violations"],
+                permissions["compliance:generate_reports"]
             ]),
             ("HR Manager", "Comprehensive staff management", False, [
                 permissions["staff:create"], permissions["staff:read"],
@@ -171,6 +182,35 @@ def init_db():
             roles[role_name] = role
 
         logger.info(f"Created/verified {len(roles)} roles")
+
+        # Create default audit settings for the organization
+        audit_setting = db.query(AuditSetting).filter(
+            AuditSetting.organization_id == default_org.id
+        ).first()
+
+        if not audit_setting:
+            audit_setting = AuditSetting(
+                organization_id=default_org.id,
+                retention_days=2555,  # 7 years for HIPAA compliance
+                archive_after_days=90,
+                enable_async_logging=True,
+                batch_size=100,
+                sampling_rate=100,  # Log everything by default
+                alert_on_phi_access=True,
+                alert_on_breach=True,
+                alert_on_failed_login=True,
+                alert_email_addresses=[settings.AUDIT_ALERT_EMAIL],
+                require_consent_verification=True,
+                mask_sensitive_data=True,
+                enable_integrity_check=True,
+                log_read_operations=True,
+                log_administrative_actions=True,
+                log_api_responses=False
+            )
+            db.add(audit_setting)
+            db.commit()
+            db.refresh(audit_setting)
+            logger.info("Default audit settings created")
 
         admin_user = db.query(User).filter(
             User.email == settings.DEFAULT_ADMIN_EMAIL

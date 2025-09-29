@@ -3,9 +3,10 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
+from app.core.audit_mixins import PHIAuditMixin
 import uuid
 
-class VitalsLog(Base):
+class VitalsLog(PHIAuditMixin, Base):
     __tablename__ = "vitals_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
@@ -38,3 +39,11 @@ class VitalsLog(Base):
 
     def __repr__(self):
         return f"<VitalsLog(id={self.id}, client_id={self.client_id}, recorded_at={self.recorded_at})>"
+
+    # Audit configuration
+    __audit_resource_type__ = "vitals"
+    __audit_phi_fields__ = [
+        "temperature", "blood_pressure_systolic", "blood_pressure_diastolic",
+        "blood_sugar", "weight", "heart_rate", "oxygen_saturation", "notes"
+    ]
+    __audit_exclude_fields__ = ["created_at", "updated_at"]

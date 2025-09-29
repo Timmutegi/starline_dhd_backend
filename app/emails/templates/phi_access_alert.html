@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHI Access Notification - Starline</title>
+    <style>
+        .container {
+            max-width: 650px;
+            margin: 0 auto;
+            font-family: "Segoe UI", Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji" ;
+        }
+        .header {
+            background-color: #059669;
+            height: 150px;
+            line-height: 150px;
+            padding-right: 50px;
+            padding-bottom: 20px;
+            color: white;
+        }
+        .header h1 {
+            text-align: center;
+        }
+        .content {
+            min-height: 100px;
+        }
+        .footer {
+            height: 100px;
+            background-color: #4F46E5;
+            padding-top: 30px;
+            padding-bottom: 30px;
+            color: white;
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .footer p {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            text-align: center;
+        }
+        .footer a {
+            color: white;
+        }
+        .info-box {
+            background-color: #F0FDF4;
+            border: 2px solid #BBF7D0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .info-title {
+            color: #166534;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <h1>🔒 PHI Access Log</h1>
+            </div>
+            <div class="content">
+                <div style="max-width: 560px; padding: 20px; background: #ffffff; border-radius: 5px; margin: 40px auto; font-family: Open Sans,Helvetica,Arial; font-size: 15px; color: #666;">
+                    <div style="color: #444444; font-weight: normal;">
+                        <div style="text-align: center; font-weight: 600; font-size: 24px; padding: 10px 0; border-bottom: solid 3px #eeeeee;">PHI Access Notification</div>
+                        <div style="clear: both;"> </div>
+                    </div>
+
+                    <div class="info-box">
+                        <div class="info-title">Protected Health Information Accessed</div>
+                        <p><strong>Client:</strong> {{client_name}} (ID: {{client_id}})</p>
+                        <p><strong>Data Type:</strong> {{data_type}}</p>
+                        <p><strong>Access Time:</strong> {{access_time}}</p>
+                        <p><strong>Accessed By:</strong> {{user_name}} ({{user_email}})</p>
+                        <p><strong>User Role:</strong> {{user_role}}</p>
+                        <p><strong>IP Address:</strong> {{ip_address}}</p>
+                        <p><strong>Purpose:</strong> {{purpose}}</p>
+                    </div>
+
+                    <div style="padding: 0 30px 30px 30px; border-bottom: 3px solid #eeeeee;">
+                        <div style="font-size: 15px; line-height: 25px;">
+                            This notification is sent to maintain transparency and compliance with HIPAA regulations.
+                            All PHI access is automatically logged and monitored for security purposes.
+                        </div>
+
+                        {% if consent_status %}
+                        <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 4px; padding: 15px; margin: 20px 0;">
+                            <strong>✅ Consent Status:</strong> {{consent_status}}
+                        </div>
+                        {% endif %}
+
+                        {% if access_count_today %}
+                        <div style="background-color: #FEF3C7; border: 1px solid #FCD34D; border-radius: 4px; padding: 15px; margin: 20px 0;">
+                            <strong>Daily Access Summary:</strong><br>
+                            This client's PHI has been accessed {{access_count_today}} times today by {{unique_users_today}} different users.
+                        </div>
+                        {% endif %}
+
+                        <div style="padding: 10px 0 20px 0; text-align: center;">
+                            <a style="background: #059669; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px;" href="{{phi_audit_url}}">View PHI Access Logs</a>
+                        </div>
+                    </div>
+
+                    <div style="color: #999; padding: 20px 30px; font-size: 14px;">
+                        <div><strong>HIPAA Compliance Notice</strong></div>
+                        <div>This notification is part of our audit trail system required for HIPAA compliance.
+                             All PHI access is logged and monitored to ensure patient privacy and data security.</div>
+                        <div style="margin-top: 15px;">
+                            <strong>Audit Log ID:</strong> {{audit_log_id}}<br>
+                            <strong>Session ID:</strong> {{session_id}}
+                        </div>
+                        <div style="margin-top: 15px;">The <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}">Starline</a> Compliance Team</div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <p><strong><a href="mailto:{{contact_email}}">{{contact_email}}</a></strong></p>
+                <p><strong>Starline Compliance Team</strong></p>
+                <p><strong>Protecting patient privacy and data security</strong></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

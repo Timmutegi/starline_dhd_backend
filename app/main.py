@@ -8,6 +8,7 @@ from slowapi.errors import RateLimitExceeded
 import logging
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.middleware.audit_middleware import AuditMiddleware
 from app.api.v1.auth import login, logout, password
 from app.api.v1.users import crud as user_crud
 from app.api.v1.clients import router as client_router
@@ -15,7 +16,7 @@ from app.api.v1.staff import router as staff_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.scheduling import router as scheduling_router
 from app.api.v1.scheduling import time_clock, appointments, availability, calendar
-from app.api.v1 import dashboard, documentation, notifications, tasks, admin
+from app.api.v1 import dashboard, documentation, notifications, tasks, admin, audit
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,6 +46,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Add audit middleware for HIPAA compliance
+app.add_middleware(
+    AuditMiddleware,
+    exclude_paths=["/docs", "/openapi.json", "/health", "/favicon.ico", "/", "/redoc"]
 )
 
 app.state.limiter = limiter
@@ -182,6 +189,12 @@ app.include_router(
     admin.router,
     prefix=f"{settings.API_V1_STR}/admin",
     tags=["Admin"]
+)
+
+app.include_router(
+    audit.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["Audit & Compliance"]
 )
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, backref
 from app.core.database import Base
+from app.core.audit_mixins import AuditMixin
 from datetime import datetime
 import uuid
 import enum
@@ -51,7 +52,7 @@ class Organization(Base):
     users = relationship("User", back_populates="organization", cascade="all, delete-orphan")
     roles = relationship("Role", back_populates="organization", cascade="all, delete-orphan")
 
-class User(Base):
+class User(AuditMixin, Base):
     __tablename__ = "users"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -94,6 +95,11 @@ class User(Base):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
+
+    # Audit configuration
+    __audit_resource_type__ = "user"
+    __audit_phi_fields__ = ["first_name", "last_name", "email", "phone_number"]
+    __audit_exclude_fields__ = ["password_hash", "created_at", "updated_at", "last_login", "lockout_until"]
 
 class Role(Base):
     __tablename__ = "roles"

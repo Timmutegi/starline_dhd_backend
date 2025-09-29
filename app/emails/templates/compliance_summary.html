@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Compliance Summary - Starline</title>
+    <style>
+        .container {
+            max-width: 650px;
+            margin: 0 auto;
+            font-family: "Segoe UI", Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji" ;
+        }
+        .header {
+            background-color: #4F46E5;
+            height: 150px;
+            line-height: 150px;
+            padding-right: 50px;
+            padding-bottom: 20px;
+            color: white;
+        }
+        .header h1 {
+            text-align: center;
+        }
+        .content {
+            min-height: 100px;
+        }
+        .footer {
+            height: 100px;
+            background-color: #4F46E5;
+            padding-top: 30px;
+            padding-bottom: 30px;
+            color: white;
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .footer p {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            text-align: center;
+        }
+        .footer a {
+            color: white;
+        }
+        .metric-box {
+            background-color: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            display: inline-block;
+            width: 45%;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #1E40AF;
+        }
+        .metric-label {
+            font-size: 14px;
+            color: #64748B;
+            margin-top: 5px;
+        }
+        .status-good {
+            color: #059669;
+            font-weight: bold;
+        }
+        .status-warning {
+            color: #D97706;
+            font-weight: bold;
+        }
+        .status-critical {
+            color: #DC2626;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <h1>📊 Compliance Summary</h1>
+            </div>
+            <div class="content">
+                <div style="max-width: 560px; padding: 20px; background: #ffffff; border-radius: 5px; margin: 40px auto; font-family: Open Sans,Helvetica,Arial; font-size: 15px; color: #666;">
+                    <div style="color: #444444; font-weight: normal;">
+                        <div style="text-align: center; font-weight: 600; font-size: 24px; padding: 10px 0; border-bottom: solid 3px #eeeeee;">Weekly Compliance Report</div>
+                        <div style="clear: both;"> </div>
+                    </div>
+
+                    <div style="padding: 20px 30px; text-align: center;">
+                        <h3>{{organization_name}}</h3>
+                        <p>Report Period: {{start_date}} to {{end_date}}</p>
+                    </div>
+
+                    <div style="padding: 0 30px;">
+                        <h3 style="color: #374151; border-bottom: 2px solid #E5E7EB; padding-bottom: 10px;">System Activity Overview</h3>
+
+                        <div style="text-align: center; margin: 20px 0;">
+                            <div class="metric-box">
+                                <div class="metric-value">{{total_activities}}</div>
+                                <div class="metric-label">Total Activities</div>
+                            </div>
+                            <div class="metric-box" style="margin-left: 2%;">
+                                <div class="metric-value">{{phi_accesses}}</div>
+                                <div class="metric-label">PHI Accesses</div>
+                            </div>
+                        </div>
+
+                        <div style="text-align: center; margin: 20px 0;">
+                            <div class="metric-box">
+                                <div class="metric-value">{{unique_users}}</div>
+                                <div class="metric-label">Active Users</div>
+                            </div>
+                            <div class="metric-box" style="margin-left: 2%;">
+                                <div class="metric-value">{{failed_attempts}}</div>
+                                <div class="metric-label">Failed Attempts</div>
+                            </div>
+                        </div>
+
+                        <h3 style="color: #374151; border-bottom: 2px solid #E5E7EB; padding-bottom: 10px; margin-top: 40px;">Compliance Status</h3>
+
+                        {% if violations_count == 0 %}
+                        <div style="background-color: #F0FDF4; border: 2px solid #BBF7D0; border-radius: 8px; padding: 20px; text-align: center;">
+                            <div class="status-good">✅ EXCELLENT COMPLIANCE</div>
+                            <p>No compliance violations detected this week.</p>
+                        </div>
+                        {% elif violations_count <= 3 %}
+                        <div style="background-color: #FEF3C7; border: 2px solid #FCD34D; border-radius: 8px; padding: 20px; text-align: center;">
+                            <div class="status-warning">⚠️ MINOR ISSUES DETECTED</div>
+                            <p>{{violations_count}} compliance violation(s) require attention.</p>
+                        </div>
+                        {% else %}
+                        <div style="background-color: #FEF2F2; border: 2px solid #FECACA; border-radius: 8px; padding: 20px; text-align: center;">
+                            <div class="status-critical">🚨 IMMEDIATE ACTION REQUIRED</div>
+                            <p>{{violations_count}} compliance violations detected. Please review immediately.</p>
+                        </div>
+                        {% endif %}
+
+                        {% if violations_count > 0 %}
+                        <h4 style="color: #374151; margin-top: 30px;">Recent Violations Summary</h4>
+                        <ul style="background-color: #F9FAFB; padding: 20px; border-radius: 6px;">
+                            {% for violation in recent_violations %}
+                            <li style="margin-bottom: 10px;">
+                                <strong>{{violation.type}}</strong> ({{violation.severity}}) - {{violation.detected_at}}
+                                {% if violation.status == 'resolved' %}
+                                <span class="status-good">[RESOLVED]</span>
+                                {% else %}
+                                <span class="status-warning">[PENDING]</span>
+                                {% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+
+                        <h4 style="color: #374151; margin-top: 30px;">Top User Activity</h4>
+                        <div style="background-color: #F9FAFB; padding: 20px; border-radius: 6px;">
+                            {% for user in top_users %}
+                            <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #E5E7EB;">
+                                <span>{{user.name}}</span>
+                                <span><strong>{{user.activity_count}}</strong> activities</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div style="padding: 20px 0; text-align: center;">
+                            <a style="background: #4F46E5; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px; margin-right: 10px;" href="{{compliance_dashboard_url}}">View Compliance Dashboard</a>
+                            <a style="background: #059669; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px;" href="{{download_report_url}}">Download Full Report</a>
+                        </div>
+                    </div>
+
+                    <div style="color: #999; padding: 20px 30px; font-size: 14px; border-top: 1px solid #E5E7EB;">
+                        <div><strong>Automated Compliance Report</strong></div>
+                        <div>This report is automatically generated weekly to ensure ongoing HIPAA compliance monitoring.
+                             For questions about this report, please contact your compliance officer.</div>
+                        <div style="margin-top: 15px;">
+                            <strong>Report Generated:</strong> {{generated_at}}<br>
+                            <strong>Next Report:</strong> {{next_report_date}}
+                        </div>
+                        <div style="margin-top: 15px;">The <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}">Starline</a> Compliance Team</div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <p><strong><a href="mailto:{{contact_email}}">{{contact_email}}</a></strong></p>
+                <p><strong>Starline Compliance Team</strong></p>
+                <p><strong>Ensuring healthcare data protection</strong></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

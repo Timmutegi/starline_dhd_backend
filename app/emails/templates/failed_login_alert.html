@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Failed Login Alert - Starline</title>
+    <style>
+        .container {
+            max-width: 650px;
+            margin: 0 auto;
+            font-family: "Segoe UI", Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji" ;
+        }
+        .header {
+            background-color: #D97706;
+            height: 150px;
+            line-height: 150px;
+            padding-right: 50px;
+            padding-bottom: 20px;
+            color: white;
+        }
+        .header h1 {
+            text-align: center;
+        }
+        .content {
+            min-height: 100px;
+        }
+        .footer {
+            height: 100px;
+            background-color: #4F46E5;
+            padding-top: 30px;
+            padding-bottom: 30px;
+            color: white;
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .footer p {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            text-align: center;
+        }
+        .footer a {
+            color: white;
+        }
+        .warning-box {
+            background-color: #FEF3C7;
+            border: 2px solid #FCD34D;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .warning-title {
+            color: #92400E;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <h1>⚠️ Login Alert</h1>
+            </div>
+            <div class="content">
+                <div style="max-width: 560px; padding: 20px; background: #ffffff; border-radius: 5px; margin: 40px auto; font-family: Open Sans,Helvetica,Arial; font-size: 15px; color: #666;">
+                    <div style="color: #444444; font-weight: normal;">
+                        <div style="text-align: center; font-weight: 600; font-size: 24px; padding: 10px 0; border-bottom: solid 3px #eeeeee;">Failed Login Attempt Alert</div>
+                        <div style="clear: both;"> </div>
+                    </div>
+
+                    <div class="warning-box">
+                        <div class="warning-title">Multiple Failed Login Attempts Detected</div>
+                        <p><strong>Target Account:</strong> {{target_email}}</p>
+                        <p><strong>Failed Attempts:</strong> {{attempt_count}} in the last {{time_window}} minutes</p>
+                        <p><strong>IP Address:</strong> {{ip_address}}</p>
+                        <p><strong>Location:</strong> {{location}} (approximate)</p>
+                        <p><strong>User Agent:</strong> {{user_agent}}</p>
+                        <p><strong>First Attempt:</strong> {{first_attempt_time}}</p>
+                        <p><strong>Last Attempt:</strong> {{last_attempt_time}}</p>
+                    </div>
+
+                    <div style="padding: 0 30px 30px 30px; border-bottom: 3px solid #eeeeee;">
+                        <div style="font-size: 15px; line-height: 25px;">
+                            <strong>Security Status:</strong><br>
+                            {% if account_locked %}
+                            <span style="color: #DC2626; font-weight: bold;">🔒 Account has been temporarily locked for security.</span>
+                            <p>The account will be automatically unlocked in {{lockout_duration}} minutes, or an administrator can unlock it manually.</p>
+                            {% else %}
+                            <span style="color: #D97706; font-weight: bold;">⚠️ Account is still accessible but being monitored.</span>
+                            <p>If this continues, the account will be automatically locked for security.</p>
+                            {% endif %}
+                        </div>
+
+                        <div style="background-color: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 4px; padding: 15px; margin: 20px 0;">
+                            <strong>Recommended Actions:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Contact the user to verify if they are attempting to log in</li>
+                                <li>If the user is not attempting to log in, consider this a potential security threat</li>
+                                <li>Review IP address for suspicious activity patterns</li>
+                                <li>Consider temporarily blocking the IP address if threats persist</li>
+                                <li>Advise the user to change their password if compromised</li>
+                            </ul>
+                        </div>
+
+                        {% if similar_attempts %}
+                        <div style="background-color: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; padding: 15px; margin: 20px 0;">
+                            <strong>⚠️ Additional Concern:</strong><br>
+                            Similar failed login patterns detected for {{similar_attempts}} other accounts from this IP address.
+                            This may indicate a coordinated attack.
+                        </div>
+                        {% endif %}
+
+                        <div style="padding: 10px 0 20px 0; text-align: center;">
+                            <a style="background: #D97706; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px; margin-right: 10px;" href="{{security_dashboard_url}}">View Security Dashboard</a>
+                            {% if account_locked %}
+                            <a style="background: #059669; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px;" href="{{unlock_account_url}}">Unlock Account</a>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div style="color: #999; padding: 20px 30px; font-size: 14px;">
+                        <div><strong>This is an automated security alert.</strong></div>
+                        <div>This notification is sent to help protect against unauthorized access attempts.
+                             All login attempts are monitored for security purposes.</div>
+                        <div style="margin-top: 15px;">
+                            <strong>Alert ID:</strong> {{alert_id}}<br>
+                            <strong>Audit Log Reference:</strong> {{audit_log_ids}}
+                        </div>
+                        <div style="margin-top: 15px;">The <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}">Starline</a> Security Team</div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <p><strong><a href="mailto:{{contact_email}}">{{contact_email}}</a></strong></p>
+                <p><strong>Starline Security Team</strong></p>
+                <p><strong>Protecting your accounts 24/7</strong></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

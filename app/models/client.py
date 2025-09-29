@@ -2,6 +2,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Date
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.core.audit_mixins import PHIAuditMixin
 from datetime import datetime
 import uuid
 
@@ -15,7 +16,7 @@ PLAN_STATUS_VALUES = ("draft", "active", "under_review", "expired", "archived")
 NOTE_TYPE_VALUES = ("general", "medical", "behavioral", "incident", "progress")
 INSURANCE_TYPE_VALUES = ("primary", "secondary", "tertiary")
 
-class Client(Base):
+class Client(PHIAuditMixin, Base):
     __tablename__ = "clients"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -62,6 +63,15 @@ class Client(Base):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
+
+    # Audit configuration
+    __audit_resource_type__ = "client"
+    __audit_phi_fields__ = [
+        "first_name", "last_name", "date_of_birth", "ssn", "phone_number",
+        "email", "address", "emergency_contact", "medical_information",
+        "dietary_restrictions", "notes", "medication_allergies"
+    ]
+    __audit_exclude_fields__ = ["created_at", "updated_at", "password_hash"]
 
 class ClientContact(Base):
     __tablename__ = "client_contacts"

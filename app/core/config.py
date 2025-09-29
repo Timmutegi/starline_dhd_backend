@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
 
+    # Audit & Security Alert Settings
+    AUDIT_ALERT_EMAIL: str = os.getenv("AUDIT_ALERT_EMAIL", "support@starline.com")
+    SECURITY_ALERT_EMAILS: str = os.getenv("SECURITY_ALERT_EMAILS", "support@starline.com")
+    COMPLIANCE_REPORT_EMAILS: str = os.getenv("COMPLIANCE_REPORT_EMAILS", "support@starline.com")
+
     class Config:
         case_sensitive = True
 
