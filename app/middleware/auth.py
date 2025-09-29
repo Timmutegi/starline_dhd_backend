@@ -1,12 +1,12 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from jose import JWTError
 from datetime import datetime, timezone
 from typing import Optional
 from app.core.database import get_db
 from app.core.security import decode_token
-from app.models.user import User, UserSession
+from app.models.user import User, UserSession, Role, UserStatus
 from app.schemas.auth import TokenPayload
 
 security = HTTPBearer()
@@ -61,14 +61,16 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = db.query(User).filter(User.id == session.user_id).first()
+    user = db.query(User).options(
+        joinedload(User.role).joinedload(Role.permissions)
+    ).filter(User.id == session.user_id).first()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
 
-    if user.status != "active":
+    if user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"User account is {user.status}"

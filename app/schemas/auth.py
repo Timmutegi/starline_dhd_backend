@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 
@@ -8,12 +8,26 @@ class LoginRequest(BaseModel):
     password: str
     remember_me: bool = False
 
+class PermissionInfo(BaseModel):
+    resource: str
+    action: str
+    description: Optional[str] = None
+
+class RoleInfo(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    is_system_role: bool
+    permissions: List[PermissionInfo]
+
 class LoginResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
     user: dict
+    role: Optional[RoleInfo] = None
+    permissions: List[str] = []  # List of "resource:action" strings for easy checking
     must_change_password: bool = False
 
 class RefreshTokenRequest(BaseModel):

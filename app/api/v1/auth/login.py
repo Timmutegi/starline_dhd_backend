@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, timedelta, timezone
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, create_refresh_token, generate_otp, hash_otp
-from app.models.user import User, UserSession, AuthAuditLog, UserStatus
-from app.schemas.auth import LoginRequest, LoginResponse, OTPVerification
+from app.models.user import User, UserSession, AuthAuditLog, UserStatus, Role, Permission
+from app.schemas.auth import LoginRequest, LoginResponse, OTPVerification, PermissionInfo, RoleInfo
 from app.schemas.user import UserResponse
 from app.core.config import settings
 from app.services.email_service import EmailService
@@ -18,7 +18,9 @@ async def login(
     login_data: LoginRequest,
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(
+    user = db.query(User).options(
+        joinedload(User.role).joinedload(Role.permissions)
+    ).filter(
         (User.email == login_data.email) | (User.username == login_data.email)
     ).first()
 
@@ -131,12 +133,37 @@ async def login(
 
     user_response = UserResponse.model_validate(user)
 
+    # Extract role and permissions information
+    role_info = None
+    permissions_list = []
+
+    if user.role:
+        # Build permissions list for the role
+        role_permissions = []
+        for permission in user.role.permissions:
+            role_permissions.append(PermissionInfo(
+                resource=permission.resource,
+                action=permission.action,
+                description=permission.description
+            ))
+            permissions_list.append(f"{permission.resource}:{permission.action}")
+
+        role_info = RoleInfo(
+            id=user.role.id,
+            name=user.role.name,
+            description=user.role.description,
+            is_system_role=user.role.is_system_role,
+            permissions=role_permissions
+        )
+
     return LoginResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         token_type="bearer",
         expires_in=int(access_token_expires.total_seconds()),
         user=user_response.model_dump(),
+        role=role_info,
+        permissions=permissions_list,
         must_change_password=user.must_change_password
     )
 
