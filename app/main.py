@@ -15,6 +15,7 @@ from app.api.v1.staff import router as staff_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.scheduling import router as scheduling_router
 from app.api.v1.scheduling import time_clock, appointments, availability, calendar
+from app.api.v1 import dashboard, documentation, notifications, tasks, admin
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -151,6 +152,36 @@ app.include_router(
     calendar.router,
     prefix=f"{settings.API_V1_STR}/scheduling/calendar",
     tags=["Calendar"]
+)
+
+app.include_router(
+    dashboard.router,
+    prefix=f"{settings.API_V1_STR}/dashboard",
+    tags=["Dashboard"]
+)
+
+app.include_router(
+    documentation.router,
+    prefix=f"{settings.API_V1_STR}/documentation",
+    tags=["Documentation"]
+)
+
+app.include_router(
+    notifications.router,
+    prefix=f"{settings.API_V1_STR}/notifications",
+    tags=["Notifications"]
+)
+
+app.include_router(
+    tasks.router,
+    prefix=f"{settings.API_V1_STR}/tasks",
+    tags=["Tasks"]
+)
+
+app.include_router(
+    admin.router,
+    prefix=f"{settings.API_V1_STR}/admin",
+    tags=["Admin"]
 )
 
 if __name__ == "__main__":
