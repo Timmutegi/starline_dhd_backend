@@ -60,6 +60,7 @@ class User(Base):
     two_factor_secret = Column(String(255), nullable=True)
     failed_login_attempts = Column(Integer, default=0)
     lockout_until = Column(DateTime, nullable=True)
+    must_change_password = Column(Boolean, default=False)
     password_changed_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

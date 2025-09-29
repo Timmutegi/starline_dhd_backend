@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.api.v1.auth import login, logout, password
 from app.api.v1.users import crud as user_crud
+from app.api.v1.clients import router as client_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -98,6 +99,12 @@ app.include_router(
     user_crud.router,
     prefix=f"{settings.API_V1_STR}/users",
     tags=["Users"]
+)
+
+app.include_router(
+    client_router.router,
+    prefix=f"{settings.API_V1_STR}/clients",
+    tags=["Clients"]
 )
 
 if __name__ == "__main__":

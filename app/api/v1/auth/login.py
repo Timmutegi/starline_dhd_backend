@@ -136,7 +136,8 @@ async def login(
         refresh_token=refresh_token,
         token_type="bearer",
         expires_in=int(access_token_expires.total_seconds()),
-        user=user_response.model_dump()
+        user=user_response.model_dump(),
+        must_change_password=user.must_change_password
     )
 
 @router.post("/verify-email-otp")

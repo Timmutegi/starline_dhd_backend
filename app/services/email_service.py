@@ -139,3 +139,36 @@ class EmailService:
             template_name="password_changed.html",
             context=context
         )
+
+    @staticmethod
+    async def send_client_credentials(
+        email: str,
+        full_name: str,
+        username: str,
+        password: str,
+        organization_name: str,
+        support_email: Optional[str] = None,
+        support_phone: Optional[str] = None
+    ) -> bool:
+        from datetime import datetime
+
+        context = {
+            "organization_name": organization_name,
+            "full_name": full_name,
+            "username": username,
+            "email": email,
+            "password": password,
+            "login_url": settings.FRONTEND_URL,
+            "frontend_url": settings.FRONTEND_URL,
+            "support_email": support_email or settings.DEFAULT_ADMIN_EMAIL,
+            "support_phone": support_phone or "Contact Administrator",
+            "contact_email": settings.DEFAULT_ADMIN_EMAIL,
+            "current_year": datetime.now().year
+        }
+
+        return await EmailService.send_email(
+            to=email,
+            subject=f"Your Account Has Been Created - {organization_name}",
+            template_name="client_credentials.html",
+            context=context
+        )

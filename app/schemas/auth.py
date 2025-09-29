@@ -14,6 +14,7 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: dict
+    must_change_password: bool = False
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
