@@ -193,8 +193,7 @@ app.include_router(
 
 app.include_router(
     audit.router,
-    prefix=f"{settings.API_V1_STR}",
-    tags=["Audit & Compliance"]
+    prefix=f"{settings.API_V1_STR}"
 )
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ import json
 import io
 from fastapi.responses import StreamingResponse
 
-router = APIRouter(prefix="/audit", tags=["audit"])
+router = APIRouter(prefix="/audit", tags=["Audit & Compliance"])
 
 
 @router.get("/logs", response_model=AuditLogListResponse, dependencies=[Depends(get_admin_or_above)])
