@@ -17,6 +17,7 @@ from app.models.client import (
 )
 from app.schemas.client import (
     ClientCreate, ClientUpdate, ClientResponse, ClientListResponse,
+    ClientCreateResponse,
     ClientContactCreate, ClientContactUpdate, ClientContactResponse,
     ClientLocationCreate, ClientLocationUpdate, ClientLocationResponse,
     ClientAssignmentCreate, ClientAssignmentUpdate, ClientAssignmentResponse,
@@ -49,7 +50,7 @@ def generate_secure_password(length: int = 12) -> str:
     return password
 
 # Client CRUD Operations
-@router.post("/", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ClientCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_client(
     client_data: ClientCreate,
     db: Session = Depends(get_db),
@@ -153,11 +154,17 @@ async def create_client(
             )
 
         # Add email to response
-        response = ClientResponse.model_validate(client)
-        response.email = user.email
-        response.full_name = client.full_name
+        client_response = ClientResponse.model_validate(client)
+        client_response.email = user.email
+        client_response.full_name = client.full_name
 
-        return response
+        return ClientCreateResponse(
+            client=client_response,
+            temporary_password=temp_password,
+            username=user.username,
+            message=f"Client {client.full_name} created successfully",
+            success=True
+        )
 
     except Exception as e:
         db.rollback()

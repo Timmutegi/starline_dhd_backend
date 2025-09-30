@@ -6,6 +6,11 @@ from app.models.staff import Staff  # Import staff models to ensure tables are c
 from app.models.client import Client  # Import client models to ensure tables are created
 from app.models.scheduling import *  # Import scheduling models to ensure tables are created
 from app.models.audit_log import AuditLog, AuditSetting, AuditExport, ComplianceViolation  # Import audit models
+from app.models.vitals_log import VitalsLog  # Import vitals log model
+from app.models.incident_report import IncidentReport  # Import incident report model
+from app.models.notification import Notification  # Import notification model
+from app.models.shift_note import ShiftNote  # Import shift note model
+from app.models.task import Task  # Import task model
 from app.core.config import settings
 import logging
 import uuid

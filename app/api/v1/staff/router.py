@@ -5,7 +5,8 @@ from uuid import UUID
 from app.core.database import get_db
 from app.core.security import get_password_hash, generate_random_password
 from app.models.user import User, Organization, Role, UserStatus, Permission
-from app.models.staff import Staff, EmploymentStatus
+from app.models.staff import Staff, EmploymentStatus, StaffAssignment, AssignmentType
+from app.models.client import Client
 from app.middleware.auth import get_current_user, require_permission
 from app.schemas.staff import (
     StaffCreate,
@@ -15,7 +16,10 @@ from app.schemas.staff import (
     StaffSummary,
     StaffListResponse,
     StaffPermissionUpdate,
-    PermissionAssignmentResponse
+    PermissionAssignmentResponse,
+    AssignmentCreate,
+    AssignmentUpdate,
+    AssignmentResponse
 )
 from app.schemas.auth import MessageResponse
 from app.services.email_service import EmailService
@@ -612,4 +616,322 @@ async def update_staff_permissions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update permissions"
+        )
+
+# Staff-to-Client Assignment Endpoints
+
+@router.post("/{staff_id}/assignments", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
+async def assign_staff_to_client(
+    staff_id: UUID,
+    assignment_data: AssignmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("staff", "manage_assignments"))
+):
+    """Assign a staff member to a client"""
+
+    try:
+        # Verify staff exists and belongs to organization
+        staff = db.query(Staff).filter(
+            Staff.id == staff_id,
+            Staff.organization_id == current_user.organization_id
+        ).first()
+
+        if not staff:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Staff member not found"
+            )
+
+        # Verify staff is active
+        if staff.employment_status != EmploymentStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot assign {staff.employment_status.value} staff member"
+            )
+
+        # Verify client exists and belongs to organization if client_id provided
+        if assignment_data.client_id:
+            client = db.query(Client).filter(
+                Client.id == assignment_data.client_id,
+                Client.organization_id == current_user.organization_id
+            ).first()
+
+            if not client:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Client not found"
+                )
+
+            # Verify client is active
+            if client.status not in ["active", "on_hold"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot assign staff to {client.status} client"
+                )
+
+        # Check for existing active assignment if PRIMARY
+        if assignment_data.assignment_type == AssignmentType.PRIMARY and assignment_data.client_id:
+            existing_primary = db.query(StaffAssignment).filter(
+                StaffAssignment.client_id == assignment_data.client_id,
+                StaffAssignment.assignment_type == AssignmentType.PRIMARY,
+                StaffAssignment.is_active == True
+            ).first()
+
+            if existing_primary:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Client already has a primary staff assignment. Please end that assignment first or use a different assignment type."
+                )
+
+        # Create assignment
+        assignment = StaffAssignment(
+            staff_id=staff_id,
+            client_id=assignment_data.client_id,
+            location_id=assignment_data.location_id,
+            assignment_type=assignment_data.assignment_type,
+            start_date=assignment_data.start_date,
+            end_date=assignment_data.end_date,
+            is_active=assignment_data.is_active,
+            notes=assignment_data.notes
+        )
+
+        db.add(assignment)
+        db.commit()
+        db.refresh(assignment)
+
+        # Reload with client data
+        assignment = db.query(StaffAssignment).options(
+            joinedload(StaffAssignment.client).joinedload(Client.user)
+        ).filter(StaffAssignment.id == assignment.id).first()
+
+        # Enrich assignment with client email
+        if assignment.client and assignment.client.user:
+            assignment.client.email = assignment.client.user.email
+
+        logger.info(f"Staff {staff.full_name} assigned to client {assignment_data.client_id} by {current_user.email}")
+
+        return assignment
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating staff assignment: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create assignment"
+        )
+
+@router.get("/{staff_id}/assignments", response_model=List[AssignmentResponse])
+async def list_staff_assignments(
+    staff_id: UUID,
+    active_only: bool = Query(False, description="Return only active assignments"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """List all assignments for a staff member"""
+
+    # Verify staff exists and belongs to organization
+    staff = db.query(Staff).filter(
+        Staff.id == staff_id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff member not found"
+        )
+
+    query = db.query(StaffAssignment).options(
+        joinedload(StaffAssignment.client).joinedload(Client.user)
+    ).filter(StaffAssignment.staff_id == staff_id)
+
+    if active_only:
+        query = query.filter(StaffAssignment.is_active == True)
+
+    assignments = query.order_by(StaffAssignment.start_date.desc()).all()
+
+    # Enrich assignments with client email
+    for assignment in assignments:
+        if assignment.client and assignment.client.user:
+            assignment.client.email = assignment.client.user.email
+
+    return assignments
+
+@router.get("/{staff_id}/assignments/{assignment_id}", response_model=AssignmentResponse)
+async def get_staff_assignment(
+    staff_id: UUID,
+    assignment_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get a specific assignment for a staff member"""
+
+    # Verify staff exists and belongs to organization
+    staff = db.query(Staff).filter(
+        Staff.id == staff_id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff member not found"
+        )
+
+    assignment = db.query(StaffAssignment).options(
+        joinedload(StaffAssignment.client).joinedload(Client.user)
+    ).filter(
+        StaffAssignment.id == assignment_id,
+        StaffAssignment.staff_id == staff_id
+    ).first()
+
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found"
+        )
+
+    # Enrich assignment with client email
+    if assignment.client and assignment.client.user:
+        assignment.client.email = assignment.client.user.email
+
+    return assignment
+
+@router.put("/{staff_id}/assignments/{assignment_id}", response_model=AssignmentResponse)
+async def update_staff_assignment(
+    staff_id: UUID,
+    assignment_id: UUID,
+    assignment_update: AssignmentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("staff", "manage_assignments"))
+):
+    """Update a staff assignment"""
+
+    try:
+        # Verify staff exists and belongs to organization
+        staff = db.query(Staff).filter(
+            Staff.id == staff_id,
+            Staff.organization_id == current_user.organization_id
+        ).first()
+
+        if not staff:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Staff member not found"
+            )
+
+        assignment = db.query(StaffAssignment).filter(
+            StaffAssignment.id == assignment_id,
+            StaffAssignment.staff_id == staff_id
+        ).first()
+
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assignment not found"
+            )
+
+        # Update fields
+        update_data = assignment_update.model_dump(exclude_unset=True)
+
+        # Validate client if being updated
+        if 'client_id' in update_data and update_data['client_id']:
+            client = db.query(Client).filter(
+                Client.id == update_data['client_id'],
+                Client.organization_id == current_user.organization_id
+            ).first()
+
+            if not client:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Client not found"
+                )
+
+        for field, value in update_data.items():
+            setattr(assignment, field, value)
+
+        assignment.updated_at = datetime.now(timezone.utc)
+
+        db.commit()
+
+        # Reload with client data
+        assignment = db.query(StaffAssignment).options(
+            joinedload(StaffAssignment.client).joinedload(Client.user)
+        ).filter(StaffAssignment.id == assignment_id).first()
+
+        # Enrich assignment with client email
+        if assignment.client and assignment.client.user:
+            assignment.client.email = assignment.client.user.email
+
+        logger.info(f"Assignment {assignment_id} updated by {current_user.email}")
+
+        return assignment
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating assignment: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update assignment"
+        )
+
+@router.delete("/{staff_id}/assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def end_staff_assignment(
+    staff_id: UUID,
+    assignment_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("staff", "manage_assignments"))
+):
+    """End a staff assignment (soft delete by setting end_date and is_active=False)"""
+
+    try:
+        # Verify staff exists and belongs to organization
+        staff = db.query(Staff).filter(
+            Staff.id == staff_id,
+            Staff.organization_id == current_user.organization_id
+        ).first()
+
+        if not staff:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Staff member not found"
+            )
+
+        assignment = db.query(StaffAssignment).filter(
+            StaffAssignment.id == assignment_id,
+            StaffAssignment.staff_id == staff_id
+        ).first()
+
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assignment not found"
+            )
+
+        # Soft delete
+        assignment.is_active = False
+        assignment.end_date = datetime.now(timezone.utc).date()
+        assignment.updated_at = datetime.now(timezone.utc)
+
+        db.commit()
+
+        logger.info(f"Assignment {assignment_id} ended by {current_user.email}")
+
+        return None
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error ending assignment: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to end assignment"
         )

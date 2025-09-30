@@ -91,6 +91,7 @@ class User(AuditMixin, Base):
     audit_logs = relationship("AuthAuditLog", back_populates="user", cascade="all, delete-orphan")
     password_history = relationship("PasswordHistory", back_populates="user", cascade="all, delete-orphan")
     custom_permissions = relationship("Permission", secondary=user_permissions, backref="users_with_custom")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
     @property
     def full_name(self):

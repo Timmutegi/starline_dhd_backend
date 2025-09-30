@@ -72,6 +72,13 @@ class ClientResponse(ClientBase):
     class Config:
         from_attributes = True
 
+class ClientCreateResponse(BaseModel):
+    client: ClientResponse
+    temporary_password: str
+    username: str
+    message: str
+    success: bool = True
+
 class ClientListResponse(BaseModel):
     items: List[ClientResponse]
     total: int

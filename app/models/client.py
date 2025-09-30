@@ -59,6 +59,11 @@ class Client(PHIAuditMixin, Base):
     notes = relationship("ClientNote", back_populates="client", cascade="all, delete-orphan")
     medications = relationship("ClientMedication", back_populates="client", cascade="all, delete-orphan")
     insurance_policies = relationship("ClientInsurance", back_populates="client", cascade="all, delete-orphan")
+    vitals_logs = relationship("VitalsLog", back_populates="client", cascade="all, delete-orphan")
+    incident_reports = relationship("IncidentReport", back_populates="client", cascade="all, delete-orphan")
+    shift_notes = relationship("ShiftNote", back_populates="client", cascade="all, delete-orphan")
+    tasks = relationship("Task", back_populates="client", cascade="all, delete-orphan")
+    staff_assignments = relationship("StaffAssignment", foreign_keys="[StaffAssignment.client_id]", cascade="all, delete-orphan", overlaps="client")
 
     @property
     def full_name(self):

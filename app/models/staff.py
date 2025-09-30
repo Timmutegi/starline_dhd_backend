@@ -340,7 +340,7 @@ class StaffAssignment(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     staff = relationship("Staff", back_populates="assignments")
-    # client = relationship("Client")  # Uncomment when Client model is available
+    client = relationship("Client", foreign_keys=[client_id])
 
 class TimeOffType(enum.Enum):
     VACATION = "vacation"

@@ -439,9 +439,28 @@ class AssignmentUpdate(BaseModel):
     is_active: Optional[bool] = None
     notes: Optional[str] = None
 
+class ClientSummary(BaseModel):
+    """Summary of client information for assignments"""
+    id: UUID
+    client_id: str
+    first_name: str
+    last_name: str
+    full_name: str
+    preferred_name: Optional[str] = None
+    date_of_birth: date
+    gender: str
+    status: str
+    primary_diagnosis: Optional[str] = None
+    email: Optional[str] = None
+    photo_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 class AssignmentResponse(AssignmentBase):
     id: UUID
     staff_id: UUID
+    client: Optional[ClientSummary] = None
     created_at: datetime
     updated_at: datetime
 

@@ -44,25 +44,24 @@ class AuditMixin:
     @classmethod
     def _audit_after_update(cls, mapper, connection, target):
         """Audit log after update"""
+        from sqlalchemy import inspect
+
         old_values = {}
         new_values = {}
 
-        # Get changed values
-        state = target.__dict__.copy()
-        history = {}
+        # Get the instance state to check for changes
+        state = inspect(target)
 
-        # Get the session and inspect the target for changes
-        for attr in mapper.columns.keys():
-            hist = getattr(target.__class__, attr).property.history
-            if hasattr(target, attr):
-                old_value = getattr(target, attr)
-                # Check if attribute has changed
-                if attr in state:
-                    new_value = state[attr]
-                    if old_value != new_value:
-                        if attr not in cls.__audit_exclude_fields__:
-                            old_values[attr] = cls._serialize_value(old_value)
-                            new_values[attr] = cls._serialize_value(new_value)
+        # Get changed attributes
+        for attr in state.attrs:
+            if attr.key not in cls.__audit_exclude_fields__:
+                hist = attr.history
+                if hist.has_changes():
+                    # Get old and new values
+                    if hist.deleted:
+                        old_values[attr.key] = cls._serialize_value(hist.deleted[0])
+                    if hist.added:
+                        new_values[attr.key] = cls._serialize_value(hist.added[0])
 
         if old_values or new_values:
             cls._create_audit_log(
