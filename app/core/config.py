@@ -61,8 +61,7 @@ class Settings(BaseSettings):
 
     # CORS Settings
     BACKEND_CORS_ORIGINS: list = [
-        "http://localhost:4200",
-        "https://cors-test.codehappy.dev"
+        "*"
     ]
 
     # Rate Limiting
