@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     DEFAULT_ADMIN_FULL_NAME: str = os.getenv("DEFAULT_ADMIN_FULL_NAME", "Admin")
 
     # CORS Settings
-    BACKEND_CORS_ORIGINS: list = ["*"]
+    BACKEND_CORS_ORIGINS: list = ["http://localhost:4200"]
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
