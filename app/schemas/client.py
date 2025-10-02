@@ -68,6 +68,10 @@ class ClientResponse(ClientBase):
     created_by: Optional[UUID] = None
     full_name: Optional[str] = None
     email: Optional[str] = None
+    location_name: Optional[str] = None
+    location_address: Optional[str] = None
+    reporting_days: Optional[List[str]] = None
+    last_interaction: Optional[datetime] = None
 
     class Config:
         from_attributes = True

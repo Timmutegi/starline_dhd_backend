@@ -7,6 +7,7 @@ from app.core.security import get_password_hash, generate_random_password
 from app.models.user import User, Organization, Role, UserStatus, Permission
 from app.models.staff import Staff, EmploymentStatus, StaffAssignment, AssignmentType
 from app.models.client import Client
+from app.schemas.client import ClientResponse
 from app.middleware.auth import get_current_user, require_permission
 from app.schemas.staff import (
     StaffCreate,
@@ -21,6 +22,7 @@ from app.schemas.staff import (
     AssignmentUpdate,
     AssignmentResponse
 )
+from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.auth import MessageResponse
 from app.services.email_service import EmailService
 from app.core.config import settings
@@ -240,10 +242,10 @@ async def create_staff(
             detail="Failed to create staff member"
         )
 
-@router.get("/", response_model=StaffListResponse)
+@router.get("/", response_model=PaginatedResponse[StaffSummary])
 async def get_staff_list(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
     employment_status: Optional[EmploymentStatus] = None,
     department: Optional[str] = None,
@@ -276,7 +278,8 @@ async def get_staff_list(
     total = query.count()
 
     # Apply pagination
-    staff_list = query.offset(skip).limit(limit).all()
+    offset = (page - 1) * page_size
+    staff_list = query.offset(offset).limit(page_size).all()
 
     # Convert to summary format
     staff_summaries = []
@@ -294,14 +297,17 @@ async def get_staff_list(
             last_login=staff.user.last_login
         ))
 
-    pages = (total + limit - 1) // limit
+    # Calculate total pages
+    pages = (total + page_size - 1) // page_size
 
-    return StaffListResponse(
-        staff=staff_summaries,
-        total=total,
-        page=(skip // limit) + 1,
-        size=limit,
-        pages=pages
+    return PaginatedResponse(
+        data=staff_summaries,
+        pagination=PaginationMeta(
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages
+        )
     )
 
 @router.get("/{staff_id}", response_model=StaffResponse)
@@ -619,6 +625,108 @@ async def update_staff_permissions(
         )
 
 # Staff-to-Client Assignment Endpoints
+
+@router.get("/me/clients", response_model=List[ClientResponse])
+async def get_my_assigned_clients(
+    active_only: bool = Query(True, description="Return only active assignments"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all clients assigned to the currently logged-in staff member"""
+
+    # Get staff record for current user
+    staff = db.query(Staff).filter(
+        Staff.user_id == current_user.id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff record not found for current user"
+        )
+
+    # Query assignments - get client IDs first to avoid DISTINCT on JSON columns
+    assignment_query = db.query(StaffAssignment.client_id).filter(
+        StaffAssignment.staff_id == staff.id
+    )
+
+    if active_only:
+        assignment_query = assignment_query.filter(
+            StaffAssignment.is_active == True
+        )
+
+    client_ids = [row[0] for row in assignment_query.distinct().all()]
+
+    # Now query clients by IDs
+    if not client_ids:
+        return []
+
+    query = db.query(Client).filter(
+        Client.id.in_(client_ids),
+        Client.organization_id == current_user.organization_id
+    )
+
+    if active_only:
+        query = query.filter(Client.status == "active")
+
+    clients = query.all()
+
+    # Add user emails, location, and schedule to response
+    client_responses = []
+    for client in clients:
+        response = ClientResponse.model_validate(client)
+        if client.user:
+            response.email = client.user.email
+        response.full_name = client.full_name
+
+        # Get assignment details
+        assignment = db.query(StaffAssignment).filter(
+            StaffAssignment.staff_id == staff.id,
+            StaffAssignment.client_id == client.id,
+            StaffAssignment.is_active == True
+        ).first()
+
+        # Add location information
+        # Location relationship not yet implemented - set to None for now
+        response.location_name = None
+        response.location_address = None
+
+        # Add reporting schedule (days of week)
+        # This would come from shift assignments - for now use a placeholder
+        # In production, query Shift table to get actual schedule
+        from app.models.scheduling import Shift, ShiftStatus
+        from datetime import datetime, timedelta
+
+        # Get recent/upcoming shifts to determine reporting days
+        # Note: Shifts don't have direct client_id - they use ShiftAssignment
+        # For now, just get all shifts for this staff member in the time range
+        # TODO: Join with ShiftAssignment to filter by client
+        start_date = datetime.now().date() - timedelta(days=7)
+        end_date = datetime.now().date() + timedelta(days=7)
+
+        shifts = db.query(Shift).filter(
+            Shift.staff_id == staff.id,
+            Shift.shift_date >= start_date,
+            Shift.shift_date <= end_date,
+            Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.IN_PROGRESS, ShiftStatus.COMPLETED])
+        ).all()
+
+        # Extract unique days of week from shifts
+        reporting_days = set()
+        for shift in shifts:
+            day_of_week = shift.shift_date.weekday()  # 0=Monday, 6=Sunday
+            day_names = ['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su']
+            reporting_days.add(day_names[day_of_week])
+
+        response.reporting_days = list(reporting_days) if reporting_days else []
+
+        # Last interaction will be None for now - can be enhanced with a separate optimized query
+        response.last_interaction = None
+
+        client_responses.append(response)
+
+    return client_responses
 
 @router.post("/{staff_id}/assignments", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
 async def assign_staff_to_client(

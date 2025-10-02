@@ -39,6 +39,129 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Current Shift Endpoint for DSPs
+
+@router.get("/shifts/me/current")
+async def get_current_shift(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get the current active shift for the logged-in DSP staff member."""
+
+    # Get staff record for current user
+    staff = db.query(Staff).filter(
+        Staff.user_id == current_user.id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff record not found for current user"
+        )
+
+    # Get the current active shift (today's shift that is in progress or scheduled for today)
+    today = date.today()
+    current_shift = db.query(Shift).options(
+        joinedload(Shift.schedule)
+    ).filter(
+        Shift.staff_id == staff.id,
+        Shift.shift_date == today,
+        Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.IN_PROGRESS])
+    ).first()
+
+    if not current_shift:
+        return {
+            "has_active_shift": False,
+            "message": "No active shift found for today"
+        }
+
+    # Get client assignment details from shift assignments
+    from app.models.staff import StaffAssignment
+    from app.models.client import ClientLocation
+    from app.models.scheduling import ShiftAssignment as ShiftClientAssignment
+
+    # Get the first client assignment for this shift
+    shift_client_assignment = db.query(ShiftClientAssignment).filter(
+        ShiftClientAssignment.shift_id == current_shift.id
+    ).first()
+
+    client_id = shift_client_assignment.client_id if shift_client_assignment else None
+
+    assignment = None
+    if client_id:
+        assignment = db.query(StaffAssignment).filter(
+            StaffAssignment.staff_id == staff.id,
+            StaffAssignment.client_id == client_id,
+            StaffAssignment.is_active == True
+        ).first()
+
+    # Get tasks for this shift
+    from app.models.task import Task, TaskStatus
+
+    tasks_query = db.query(Task).filter(
+        Task.assigned_to == current_user.id,
+        Task.client_id == client_id if client_id else None,
+        Task.due_date == today
+    ) if client_id else db.query(Task).filter(Task.id == None)  # Empty query if no client
+
+    total_tasks = tasks_query.count()
+    completed_tasks = tasks_query.filter(Task.status == TaskStatus.COMPLETED).count()
+
+    # Calculate time on shift
+    from app.models.scheduling import TimeClockEntry, TimeEntryType
+
+    clock_in_entry = db.query(TimeClockEntry).filter(
+        TimeClockEntry.staff_id == staff.id,
+        TimeClockEntry.shift_id == current_shift.id,
+        TimeClockEntry.entry_type == TimeEntryType.CLOCK_IN
+    ).order_by(TimeClockEntry.entry_datetime.desc()).first()
+
+    time_on_shift = None
+    clock_in_time = None
+    if clock_in_entry:
+        clock_in_time = clock_in_entry.entry_datetime
+        elapsed = datetime.utcnow() - clock_in_entry.entry_datetime
+        hours = int(elapsed.total_seconds() // 3600)
+        minutes = int((elapsed.total_seconds() % 3600) // 60)
+        time_on_shift = f"{hours}h {minutes}m"
+
+    # Build response
+    location_name = assignment.location.name if assignment and assignment.location else "Location Not Set"
+    location_address = assignment.location.address if assignment and assignment.location else ""
+
+    return {
+        "has_active_shift": True,
+        "shift": {
+            "id": str(current_shift.id),
+            "shift_date": current_shift.shift_date.isoformat(),
+            "start_time": current_shift.start_time.strftime("%I:%M %p") if current_shift.start_time else None,
+            "end_time": current_shift.end_time.strftime("%I:%M %p") if current_shift.end_time else None,
+            "status": current_shift.status.value,
+            "notes": current_shift.notes
+        },
+        "client": {
+            "id": str(current_shift.client.id) if current_shift.client else None,
+            "full_name": current_shift.client.full_name if current_shift.client else "Unknown Client",
+            "client_id": current_shift.client.client_id if current_shift.client else None,
+            "special_needs": current_shift.client.primary_diagnosis if current_shift.client else None
+        },
+        "location": {
+            "name": location_name,
+            "address": location_address
+        },
+        "time_tracking": {
+            "time_on_shift": time_on_shift,
+            "clock_in_time": clock_in_time.strftime("%I:%M %p") if clock_in_time else None,
+            "is_clocked_in": clock_in_time is not None
+        },
+        "tasks": {
+            "total": total_tasks,
+            "completed": completed_tasks,
+            "pending": total_tasks - completed_tasks
+        }
+    }
+
 # Schedule Management Endpoints
 
 @router.post("/schedules", response_model=ScheduleResponse)

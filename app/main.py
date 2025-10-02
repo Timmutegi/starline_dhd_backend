@@ -18,6 +18,13 @@ from app.api.v1.scheduling import router as scheduling_router
 from app.api.v1.scheduling import time_clock, appointments, availability, calendar
 from app.api.v1 import dashboard, documentation, notifications, tasks, admin, audit
 
+# Import all models to ensure they're registered with SQLAlchemy before table creation
+from app.models import (
+    user, client, staff, scheduling, task as task_model,
+    vitals_log, shift_note, incident_report, notification as notification_model,
+    audit_log, meal_log, activity_log
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

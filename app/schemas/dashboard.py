@@ -47,6 +47,7 @@ class ClientAssignment(BaseModel):
     status: str = Field(..., description="Current status of assignment")
     time_in: Optional[datetime] = Field(None, description="Actual time clocked in")
     time_out: Optional[datetime] = Field(None, description="Actual time clocked out")
+    last_interaction: Optional[str] = Field(None, description="Timestamp of last interaction with client")
 
 class TaskSummary(BaseModel):
     total_tasks: int = Field(..., description="Total number of tasks")

@@ -6,9 +6,11 @@ from typing import Optional, List
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User
-from app.models.client import Client
-from app.models.staff import Staff
-from app.models.scheduling import Appointment
+from app.models.client import Client, ClientAssignment as ClientAssignmentModel
+from app.models.staff import Staff, StaffAssignment
+from app.models.scheduling import Appointment, AppointmentStatus
+from app.models.task import Task, TaskStatusEnum
+from app.models.incident_report import IncidentReport
 from app.schemas.dashboard import (
     DashboardOverview,
     QuickStats,
@@ -32,28 +34,44 @@ async def get_dashboard_overview(
     try:
         target_date = date_filter or date.today()
 
-        # Get clients assigned today for current user
-        clients_assigned_query = db.query(Client).join(
-            # This would need proper assignment table - simplified for now
-            text("SELECT client_id FROM client_assignments WHERE staff_id = :staff_id AND date(assignment_date) = :target_date")
-        ).params(staff_id=current_user.id, target_date=target_date)
+        # Get staff record for current user
+        staff = db.query(Staff).filter(Staff.user_id == current_user.id).first()
 
-        clients_assigned = clients_assigned_query.count()
+        # Get clients assigned today for current user via StaffAssignment
+        clients_assigned = 0
+        if staff:
+            clients_assigned = db.query(StaffAssignment).filter(
+                and_(
+                    StaffAssignment.staff_id == staff.id,
+                    StaffAssignment.is_active == True
+                )
+            ).count()
 
         # Get appointments today
         appointments_today = db.query(Appointment).filter(
             and_(
-                Appointment.staff_id == current_user.id,
-                func.date(Appointment.start_time) == target_date,
-                Appointment.status.in_(['scheduled', 'in_progress'])
+                Appointment.staff_id == staff.id if staff else None,
+                func.date(Appointment.start_datetime) == target_date,
+                Appointment.status.in_([AppointmentStatus.SCHEDULED, AppointmentStatus.IN_PROGRESS])
+            )
+        ).count() if staff else 0
+
+        # Get completed tasks for today
+        tasks_completed = db.query(Task).filter(
+            and_(
+                Task.assigned_to == current_user.id,
+                Task.status == TaskStatusEnum.COMPLETED,
+                func.date(Task.completed_at) == target_date
             )
         ).count()
 
-        # Get completed tasks (simplified - would need proper task model)
-        tasks_completed = 0  # Placeholder until task system is implemented
-
-        # Get incidents reported today (placeholder)
-        incidents_reported = 0  # Placeholder until incident system is implemented
+        # Get incidents reported today
+        incidents_reported = db.query(IncidentReport).filter(
+            and_(
+                IncidentReport.staff_id == current_user.id,
+                func.date(IncidentReport.created_at) == target_date
+            )
+        ).count()
 
         quick_stats = QuickStats(
             clients_assigned_today=clients_assigned,
@@ -108,27 +126,35 @@ async def get_clients_assigned_today(
     try:
         target_date = date_filter or date.today()
 
-        # This would need proper assignment/scheduling model - simplified for now
-        # For now, we'll return clients based on appointments
-        appointments = db.query(Appointment).filter(
+        # Get staff record for current user
+        staff = db.query(Staff).filter(Staff.user_id == current_user.id).first()
+
+        if not staff:
+            return []
+
+        # Get clients via staff assignments
+        assignments = db.query(StaffAssignment).filter(
             and_(
-                Appointment.staff_id == current_user.id,
-                func.date(Appointment.start_time) == target_date
+                StaffAssignment.staff_id == staff.id,
+                StaffAssignment.is_active == True
             )
         ).all()
 
         client_assignments = []
-        for apt in appointments:
-            if apt.client:
+        for assignment in assignments:
+            if assignment.client:
+                # Get last interaction - simplified to avoid complex queries in loop
+                # For now, just return None and can be enhanced later with a separate query
                 client_assignments.append(ClientAssignment(
-                    client_id=str(apt.client.id),
-                    client_name=f"{apt.client.first_name} {apt.client.last_name}",
-                    client_code=apt.client.client_id,
-                    location=apt.client.address or "No address",
-                    shift_time=f"{apt.start_time.strftime('%H:%M')} - {apt.end_time.strftime('%H:%M')}" if apt.end_time else apt.start_time.strftime('%H:%M'),
-                    status=apt.status,
-                    time_in=apt.start_time if apt.status == 'completed' else None,
-                    time_out=apt.end_time if apt.status == 'completed' else None
+                    client_id=str(assignment.client.id),
+                    client_name=f"{assignment.client.first_name} {assignment.client.last_name}",
+                    client_code=assignment.client.client_id,
+                    location="Primary Assignment",
+                    shift_time="See Schedule",
+                    status="assigned",
+                    time_in=None,
+                    time_out=None,
+                    last_interaction=None
                 ))
 
         return client_assignments
@@ -151,11 +177,22 @@ async def get_tasks_summary(
     try:
         target_date = date_filter or date.today()
 
-        # Placeholder implementation - would need proper task model
-        total_tasks = 0
-        completed_tasks = 0
-        pending_tasks = 0
-        overdue_tasks = 0
+        # Get tasks for the current user
+        base_query = db.query(Task).filter(
+            Task.assigned_to == current_user.id
+        )
+
+        total_tasks = base_query.count()
+        completed_tasks = base_query.filter(Task.status == TaskStatusEnum.COMPLETED).count()
+        pending_tasks = base_query.filter(Task.status == TaskStatusEnum.PENDING).count()
+
+        # Overdue tasks (pending or in-progress with due date in the past)
+        overdue_tasks = base_query.filter(
+            and_(
+                Task.due_date < datetime.utcnow(),
+                Task.status.in_([TaskStatusEnum.PENDING, TaskStatusEnum.IN_PROGRESS])
+            )
+        ).count()
 
         return TaskSummary(
             total_tasks=total_tasks,
@@ -224,4 +261,106 @@ async def get_quick_actions(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve quick actions: {str(e)}"
+        )
+
+@router.get("/recent-entries")
+async def get_recent_entries(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    limit: int = Query(5, ge=1, le=50, description="Number of recent entries to return")
+):
+    """
+    Get recent documentation entries (vitals, shift notes, meals, incidents) for the current DSP user
+    """
+    try:
+        from app.models.vitals_log import VitalsLog
+        from app.models.shift_note import ShiftNote
+        from app.models.meal_log import MealLog
+        from app.models.incident_report import IncidentReport as IncidentReportDoc
+
+        recent_entries = []
+
+        # Get staff record for current user
+        staff = db.query(Staff).filter(Staff.user_id == current_user.id).first()
+
+        if not staff:
+            return {"entries": []}
+
+        # Get recent vitals logs
+        vitals = db.query(VitalsLog).filter(
+            VitalsLog.staff_id == current_user.id
+        ).order_by(VitalsLog.recorded_at.desc()).limit(limit).all()
+
+        for vital in vitals:
+            client = db.query(Client).filter(Client.id == vital.client_id).first()
+            recent_entries.append({
+                "client": client.full_name if client else "Unknown",
+                "type": "Vitals Log",
+                "time": vital.recorded_at.strftime("%I:%M %p") if vital.recorded_at else "",
+                "status": "Done",
+                "created_at": vital.recorded_at
+            })
+
+        # Get recent shift notes
+        shift_notes = db.query(ShiftNote).filter(
+            ShiftNote.staff_id == current_user.id
+        ).order_by(ShiftNote.created_at.desc()).limit(limit).all()
+
+        for note in shift_notes:
+            client = db.query(Client).filter(Client.id == note.client_id).first()
+            recent_entries.append({
+                "client": client.full_name if client else "Unknown",
+                "type": "Shift Note",
+                "time": note.created_at.strftime("%I:%M %p") if note.created_at else "",
+                "status": "Done",
+                "created_at": note.created_at
+            })
+
+        # Get recent meal logs
+        meals = db.query(MealLog).filter(
+            MealLog.staff_id == current_user.id
+        ).order_by(MealLog.created_at.desc()).limit(limit).all()
+
+        for meal in meals:
+            client = db.query(Client).filter(Client.id == meal.client_id).first()
+            recent_entries.append({
+                "client": client.full_name if client else "Unknown",
+                "type": "Meal Intake",
+                "time": meal.created_at.strftime("%I:%M %p") if meal.created_at else "",
+                "status": "Done",
+                "created_at": meal.created_at
+            })
+
+        # Get recent incident reports
+        incidents = db.query(IncidentReportDoc).filter(
+            IncidentReportDoc.staff_id == current_user.id
+        ).order_by(IncidentReportDoc.created_at.desc()).limit(limit).all()
+
+        for incident in incidents:
+            client = db.query(Client).filter(Client.id == incident.client_id).first()
+            # Combine incident_date and incident_time for display
+            from datetime import datetime
+            incident_dt = datetime.combine(incident.incident_date, datetime.min.time()) if incident.incident_date else incident.created_at
+            recent_entries.append({
+                "client": client.full_name if client else "Unknown",
+                "type": "IR",
+                "time": incident.incident_time if incident.incident_time else "",
+                "status": "Urgent" if incident.severity.value == "high" or incident.severity.value == "critical" else "Pending",
+                "created_at": incident_dt
+            })
+
+        # Sort by created_at and limit to requested count
+        recent_entries.sort(key=lambda x: x["created_at"], reverse=True)
+        recent_entries = recent_entries[:limit]
+
+        # Remove created_at from response (used only for sorting)
+        for entry in recent_entries:
+            del entry["created_at"]
+
+        return {"entries": recent_entries}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve recent entries: {str(e)}"
         )

@@ -209,6 +209,270 @@ def get_roles(token: str) -> Optional[list]:
         return None
 
 
+def create_task(token: str, task_data: Dict) -> Optional[Dict]:
+    """Create a task using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/tasks/",
+            json=task_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+
+    except Exception as e:
+        return None
+
+
+def create_vitals_log(token: str, vitals_data: Dict) -> Optional[Dict]:
+    """Create a vitals log using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/documentation/vitals",
+            json=vitals_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+
+    except Exception as e:
+        return None
+
+
+def create_shift_note(token: str, note_data: Dict) -> Optional[Dict]:
+    """Create a shift note using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/documentation/shift-notes",
+            json=note_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+
+    except Exception as e:
+        return None
+
+
+def create_meal_log(token: str, meal_data: Dict) -> Optional[Dict]:
+    """Create a meal log using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/documentation/meals",
+            json=meal_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+
+    except Exception as e:
+        return None
+
+
+def create_incident_report(token: str, incident_data: Dict) -> Optional[Dict]:
+    """Create an incident report using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/documentation/incidents",
+            data=incident_data,
+            headers={
+                "Authorization": f"Bearer {token}"
+            }
+        )
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+
+    except Exception as e:
+        return None
+
+
+def create_location(token: str, location_data: Dict) -> Optional[Dict]:
+    """Create a location using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/locations",
+            json=location_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code == 201:
+            return response.json()
+        else:
+            print_error(f"Failed to create location: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        print_error(f"Error creating location: {str(e)}")
+        return None
+
+
+def assign_client_to_location(token: str, client_id: str, assignment_data: Dict) -> Optional[Dict]:
+    """Assign a client to a location"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/clients/{client_id}/assignments",
+            json=assignment_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code == 201:
+            return response.json()
+        else:
+            print_error(f"Failed to assign client to location: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        print_error(f"Error assigning client to location: {str(e)}")
+        return None
+
+
+def create_schedule(token: str, schedule_data: Dict, org_id: str) -> Optional[Dict]:
+    """Create a schedule using the API"""
+    try:
+        # Add organization_id to schedule data
+        schedule_data["organization_id"] = org_id
+
+        response = requests.post(
+            f"{BASE_URL}/scheduling/schedules",
+            json=schedule_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code == 201:
+            return response.json()
+        else:
+            print_error(f"Failed to create schedule: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        print_error(f"Error creating schedule: {str(e)}")
+        return None
+
+
+def create_shift(token: str, shift_data: Dict) -> Optional[Dict]:
+    """Create a shift using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/scheduling/shifts",
+            json=shift_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code == 201:
+            return response.json()
+        else:
+            print_error(f"Failed to create shift: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        print_error(f"Error creating shift: {str(e)}")
+        return None
+
+
+def clock_in(token: str, shift_id: str) -> Optional[Dict]:
+    """Clock in for a shift"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/scheduling/time-clock/clock-in",
+            json={"shift_id": shift_id},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code in [200, 201]:
+            return response.json()
+        else:
+            return None
+
+    except Exception as e:
+        return None
+
+
+def create_notification(token: str, notification_data: Dict) -> Optional[Dict]:
+    """Create a notification using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/notifications",
+            json=notification_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code in [200, 201]:
+            return response.json()
+        else:
+            return None
+
+    except Exception as e:
+        return None
+
+
+def create_appointment(token: str, appointment_data: Dict) -> Optional[Dict]:
+    """Create an appointment using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/scheduling/appointments",
+            json=appointment_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        if response.status_code in [200, 201]:
+            return response.json()
+        else:
+            print_error(f"Failed to create appointment: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        print_error(f"Error creating appointment: {str(e)}")
+        return None
+
+
 def main():
     """Main seeding function"""
     print_header("STARLINE DATABASE SEEDING SCRIPT")
@@ -418,12 +682,371 @@ def main():
         else:
             print_error("\nFailed to create assignment")
 
+    # Create Tasks
+    print_header("CREATING TASKS")
+
+    tasks = []
+    if len(clients) > 0 and len(staff_members) > 0:
+        tasks_data = [
+            {
+                "client_id": clients[0]["id"],
+                "title": "Complete medication administration training",
+                "description": "Review medication protocols and complete certification",
+                "priority": "high",
+                "due_date": str(date.today() + timedelta(days=7))
+            },
+            {
+                "client_id": clients[0]["id"],
+                "title": "Update care plan documentation",
+                "description": "Review and update quarterly care plan",
+                "priority": "medium",
+                "due_date": str(date.today() + timedelta(days=14))
+            },
+            {
+                "client_id": clients[1]["id"] if len(clients) > 1 else clients[0]["id"],
+                "title": "Schedule dental appointment",
+                "description": "Coordinate with dental office for routine checkup",
+                "priority": "medium",
+                "due_date": str(date.today() + timedelta(days=10))
+            }
+        ]
+
+        for task_data in tasks_data:
+            task = create_task(token, task_data)
+            if task:
+                tasks.append(task)
+                print_success(f"Created task: {task_data['title']}")
+
+    print_success(f"\nCreated {len(tasks)} tasks")
+
+    # Create Vitals Logs
+    print_header("CREATING VITALS LOGS")
+
+    vitals_logs = []
+    if len(clients) > 0:
+        vitals_data_list = [
+            {
+                "client_id": clients[0]["id"],
+                "temperature": 98.6,
+                "blood_pressure_systolic": 120,
+                "blood_pressure_diastolic": 80,
+                "blood_sugar": 95.0,
+                "weight": 165.5,
+                "heart_rate": 72,
+                "oxygen_saturation": 98.0,
+                "notes": "All vitals within normal range"
+            },
+            {
+                "client_id": clients[1]["id"] if len(clients) > 1 else clients[0]["id"],
+                "temperature": 97.8,
+                "blood_pressure_systolic": 118,
+                "blood_pressure_diastolic": 76,
+                "heart_rate": 68,
+                "oxygen_saturation": 99.0,
+                "notes": "Client resting comfortably"
+            }
+        ]
+
+        for vitals_data in vitals_data_list:
+            vitals = create_vitals_log(token, vitals_data)
+            if vitals:
+                vitals_logs.append(vitals)
+                print_success(f"Created vitals log for client")
+
+    print_success(f"\nCreated {len(vitals_logs)} vitals logs")
+
+    # Create Shift Notes
+    print_header("CREATING SHIFT NOTES")
+
+    shift_notes = []
+    if len(clients) > 0:
+        shift_notes_data = [
+            {
+                "client_id": clients[0]["id"],
+                "shift_date": str(date.today()),
+                "shift_time": "8:00 AM - 4:00 PM",
+                "narrative": "Client was cooperative throughout the shift. Participated in all scheduled activities. Maintained good hygiene and followed daily routine.",
+                "challenges_faced": "Minor difficulty with medication compliance at lunch time",
+                "support_required": "Continued reminders for medication schedule",
+                "observations": "Overall positive mood and good engagement with peers"
+            },
+            {
+                "client_id": clients[1]["id"] if len(clients) > 1 else clients[0]["id"],
+                "shift_date": str(date.today() - timedelta(days=1)),
+                "shift_time": "8:00 AM - 4:00 PM",
+                "narrative": "Client had a productive day with full participation in activities. Enjoyed outdoor recreation time.",
+                "observations": "Demonstrated improved social interaction skills"
+            }
+        ]
+
+        for note_data in shift_notes_data:
+            note = create_shift_note(token, note_data)
+            if note:
+                shift_notes.append(note)
+                print_success(f"Created shift note for {note_data['shift_date']}")
+
+    print_success(f"\nCreated {len(shift_notes)} shift notes")
+
+    # Create Meal Logs
+    print_header("CREATING MEAL LOGS")
+
+    meal_logs = []
+    if len(clients) > 0:
+        meal_logs_data = [
+            {
+                "client_id": clients[0]["id"],
+                "meal_type": "breakfast",
+                "meal_time": "08:00 AM",
+                "food_items": ["Oatmeal", "Orange juice", "Toast", "Scrambled eggs"],
+                "intake_amount": "most",
+                "percentage_consumed": 85,
+                "calories": 450.0,
+                "water_intake_ml": 240,
+                "appetite_level": "good",
+                "dietary_preferences_followed": True,
+                "dietary_restrictions_followed": True,
+                "assistance_required": False,
+                "notes": "Client enjoyed breakfast and ate well"
+            },
+            {
+                "client_id": clients[0]["id"],
+                "meal_type": "lunch",
+                "meal_time": "12:30 PM",
+                "food_items": ["Grilled chicken", "Steamed vegetables", "Rice", "Apple"],
+                "intake_amount": "all",
+                "percentage_consumed": 100,
+                "calories": 520.0,
+                "water_intake_ml": 300,
+                "appetite_level": "good",
+                "dietary_preferences_followed": True,
+                "dietary_restrictions_followed": True,
+                "assistance_required": False,
+                "notes": "Excellent appetite, finished entire meal"
+            },
+            {
+                "client_id": clients[1]["id"] if len(clients) > 1 else clients[0]["id"],
+                "meal_type": "breakfast",
+                "meal_time": "08:15 AM",
+                "food_items": ["Cereal", "Milk", "Banana"],
+                "intake_amount": "partial",
+                "percentage_consumed": 60,
+                "water_intake_ml": 180,
+                "appetite_level": "fair",
+                "notes": "Client ate slowly, needed encouragement"
+            }
+        ]
+
+        for meal_data in meal_logs_data:
+            meal = create_meal_log(token, meal_data)
+            if meal:
+                meal_logs.append(meal)
+                print_success(f"Created meal log: {meal_data['meal_type']}")
+
+    print_success(f"\nCreated {len(meal_logs)} meal logs")
+
+    # Create Incident Reports
+    print_header("CREATING INCIDENT REPORTS")
+
+    incidents = []
+    if len(clients) > 0:
+        incidents_data = [
+            {
+                "client_id": clients[0]["id"],
+                "incident_type": "behavioral",
+                "description": "Client became agitated during group activity. Staff intervened with de-escalation techniques.",
+                "action_taken": "Removed client to quiet area, provided calming activities, monitored closely",
+                "severity": "low",
+                "incident_date": str(date.today() - timedelta(days=2)),
+                "incident_time": "14:30",
+                "location": "Recreation room",
+                "follow_up_required": False
+            }
+        ]
+
+        for incident_data in incidents_data:
+            incident = create_incident_report(token, incident_data)
+            if incident:
+                incidents.append(incident)
+                print_success(f"Created incident report: {incident_data['incident_type']}")
+
+    print_success(f"\nCreated {len(incidents)} incident reports")
+
+    # Note: Location creation endpoint not available in current API
+    # Locations should be created via admin interface or separate management endpoint
+    print_info("\nℹ Note: Locations should be created via admin interface")
+
+    locations = []
+    client_location_assignments = []
+
+    # Create Schedules and Shifts for tim@kaziflex.com (first staff member)
+    print_header("CREATING SCHEDULES AND SHIFTS")
+
+    schedules = []
+    shifts = []
+    if len(staff_members) > 0 and len(clients) > 0:
+        tim_staff = staff_members[0]  # tim@kaziflex.com
+        org_id = staff_members[0]["organization_id"]
+
+        # Create a schedule for the week
+        schedule_data = {
+            "schedule_name": f"Weekly Schedule - {tim_staff['full_name']}",
+            "staff_id": tim_staff["id"],
+            "start_date": str(date.today() - timedelta(days=7)),
+            "end_date": str(date.today() + timedelta(days=7)),
+            "schedule_type": "weekly",
+            "is_active": True
+        }
+        schedule = create_schedule(token, schedule_data, org_id)
+
+        if schedule:
+            schedules.append(schedule)
+            print_success(f"Created schedule for {tim_staff['full_name']}")
+
+            # Today's shift (active)
+            today_shift_data = {
+                "schedule_id": schedule["id"],
+                "staff_id": tim_staff["id"],
+                "client_id": clients[0]["id"],
+                "shift_date": str(date.today()),
+                "start_time": "08:00:00",
+                "end_time": "16:00:00",
+                "shift_type": "regular",
+                "status": "scheduled"
+            }
+            today_shift = create_shift(token, today_shift_data)
+            if today_shift:
+                shifts.append(today_shift)
+                print_success(f"Created today's shift for {tim_staff['full_name']}")
+
+                # Clock in to today's shift
+                clock_in_result = clock_in(token, today_shift["id"])
+                if clock_in_result:
+                    print_success(f"Clocked in {tim_staff['full_name']} for today's shift")
+
+            # Create shifts for the week (Mon-Fri)
+            for day_offset in range(-3, 5):  # Past 3 days + future 4 days
+                if day_offset == 0:  # Skip today, already created
+                    continue
+
+                shift_date = date.today() + timedelta(days=day_offset)
+                # Skip weekends
+                if shift_date.weekday() >= 5:  # 5=Saturday, 6=Sunday
+                    continue
+
+                client_index = abs(day_offset) % len(clients)
+                shift_data = {
+                    "schedule_id": schedule["id"],
+                    "staff_id": tim_staff["id"],
+                    "client_id": clients[client_index]["id"],
+                    "shift_date": str(shift_date),
+                    "start_time": "08:00:00",
+                    "end_time": "16:00:00",
+                    "shift_type": "regular",
+                    "status": "scheduled" if day_offset > 0 else "completed"
+                }
+                shift = create_shift(token, shift_data)
+                if shift:
+                    shifts.append(shift)
+
+    print_success(f"\nCreated {len(schedules)} schedules and {len(shifts)} shifts")
+
+    # Create Appointments
+    print_header("CREATING APPOINTMENTS")
+
+    appointments = []
+    if len(clients) > 0 and len(staff_members) > 0:
+        # Get organization_id from staff member
+        org_id = staff_members[0]["organization_id"]
+
+        appointments_data = [
+            {
+                "organization_id": org_id,
+                "client_id": clients[0]["id"],
+                "staff_id": staff_members[0]["id"],
+                "title": "Annual Physical Examination",
+                "appointment_type": "medical",
+                "start_datetime": f"{date.today()}T14:00:00",
+                "end_datetime": f"{date.today()}T15:00:00",
+                "location": "Springfield Medical Center",
+                "notes": "Annual physical examination",
+                "status": "scheduled"
+            },
+            {
+                "organization_id": org_id,
+                "client_id": clients[1]["id"] if len(clients) > 1 else clients[0]["id"],
+                "staff_id": staff_members[0]["id"],
+                "title": "Physical Therapy Session",
+                "appointment_type": "therapy",
+                "start_datetime": f"{date.today()}T15:30:00",
+                "end_datetime": f"{date.today()}T16:30:00",
+                "location": "Wellness Center",
+                "notes": "Physical therapy session",
+                "status": "scheduled"
+            }
+        ]
+
+        for appointment_data in appointments_data:
+            appointment = create_appointment(token, appointment_data)
+            if appointment:
+                appointments.append(appointment)
+                print_success(f"Created appointment: {appointment_data['title']}")
+
+    print_success(f"\nCreated {len(appointments)} appointments")
+
+    # Create Notifications
+    print_header("CREATING NOTIFICATIONS")
+
+    notifications_created = []
+    if len(clients) > 0 and len(staff_members) > 0:
+        notifications_data = [
+            {
+                "user_id": staff_members[0]["user"]["id"],
+                "title": "Vitals Entry Due",
+                "message": f"Scheduled vitals for {clients[0]['full_name']} at 2:00 PM.",
+                "category": "reminder",
+                "priority": "medium"
+            },
+            {
+                "user_id": staff_members[0]["user"]["id"],
+                "title": "Meal Log Missing",
+                "message": f"No lunch intake recorded for {clients[1]['full_name'] if len(clients) > 1 else clients[0]['full_name']}.",
+                "category": "reminder",
+                "priority": "medium"
+            },
+            {
+                "user_id": staff_members[0]["user"]["id"],
+                "title": "Incident Form Pending",
+                "message": "Shift incident needs submission.",
+                "category": "critical",
+                "priority": "high"
+            }
+        ]
+
+        for notification_data in notifications_data:
+            notification = create_notification(token, notification_data)
+            if notification:
+                notifications_created.append(notification)
+                print_success(f"Created notification: {notification_data['title']}")
+
+    print_success(f"\nCreated {len(notifications_created)} notifications")
+
     # Summary
     print_header("SEEDING COMPLETE")
 
     print_success(f"✓ Created {len(clients)} clients")
     print_success(f"✓ Created {len(staff_members)} staff members")
     print_success(f"✓ Created 1 staff assignment")
+    print_success(f"✓ Created {len(locations)} locations")
+    print_success(f"✓ Created {len(client_location_assignments)} client-location assignments")
+    print_success(f"✓ Created {len(schedules)} schedules")
+    print_success(f"✓ Created {len(shifts)} shifts")
+    print_success(f"✓ Created {len(appointments)} appointments")
+    print_success(f"✓ Created {len(notifications_created)} notifications")
+    print_success(f"✓ Created {len(tasks)} tasks")
+    print_success(f"✓ Created {len(vitals_logs)} vitals logs")
+    print_success(f"✓ Created {len(shift_notes)} shift notes")
+    print_success(f"✓ Created {len(meal_logs)} meal logs")
+    print_success(f"✓ Created {len(incidents)} incident reports")
 
     # Display credentials table for clients
     if clients:

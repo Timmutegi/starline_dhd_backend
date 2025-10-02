@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from uuid import UUID
 from app.core.database import get_db
@@ -12,6 +12,7 @@ from app.schemas.user import (
     UserResponse,
     UserInDB
 )
+from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.auth import MessageResponse
 from app.services.email_service import EmailService
 from app.core.config import settings
@@ -85,17 +86,23 @@ async def create_user(
 
     return UserResponse.model_validate(new_user)
 
-@router.get("/", response_model=List[UserResponse])
+@router.get("/", response_model=PaginatedResponse[UserResponse])
 async def get_users(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
     status: Optional[UserStatus] = None,
     organization_id: Optional[UUID] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("users", "read"))
 ):
-    query = db.query(User)
+    """Get all users with filtering and pagination. Returns complete user data including role and user type."""
+
+    # Base query with eager loading of relationships
+    query = db.query(User).options(
+        joinedload(User.organization),
+        joinedload(User.role)
+    )
 
     if organization_id:
         query = query.filter(User.organization_id == organization_id)
@@ -114,8 +121,54 @@ async def get_users(
     if status:
         query = query.filter(User.status == status)
 
-    users = query.offset(skip).limit(limit).all()
-    return [UserResponse.model_validate(user) for user in users]
+    # Get total count
+    total = query.count()
+
+    # Apply pagination
+    offset = (page - 1) * page_size
+    users = query.offset(offset).limit(page_size).all()
+
+    # Enrich user responses with complete data
+    user_responses = []
+    for user in users:
+        user_response = UserResponse.model_validate(user)
+
+        # Add role name if available
+        if user.role:
+            user_response.role_name = user.role.name
+
+        # Determine user type based on related profiles
+        # Check if user has staff or client profile
+        from app.models.staff import Staff
+        from app.models.client import Client
+
+        staff_profile = db.query(Staff).filter(Staff.user_id == user.id).first()
+        client_profile = db.query(Client).filter(Client.user_id == user.id).first()
+
+        if staff_profile:
+            user_response.user_type = "staff"
+            # Override hire_date with staff hire_date if available
+            if staff_profile.hire_date:
+                user_response.hire_date = datetime.combine(staff_profile.hire_date, datetime.min.time())
+        elif client_profile:
+            user_response.user_type = "client"
+        else:
+            user_response.user_type = "admin"
+
+        user_responses.append(user_response)
+
+    # Calculate total pages
+    pages = (total + page_size - 1) // page_size
+
+    return PaginatedResponse(
+        data=user_responses,
+        pagination=PaginationMeta(
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages
+        )
+    )
 
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(

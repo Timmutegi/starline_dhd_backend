@@ -8,7 +8,7 @@ import secrets
 import string
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_role
+from app.middleware.auth import get_current_user, require_permission
 from app.core.security import get_password_hash
 from app.models.user import User, UserStatus, Organization, Role, Permission
 from app.models.client import (
@@ -27,6 +27,7 @@ from app.schemas.client import (
     ClientInsuranceCreate, ClientInsuranceUpdate, ClientInsuranceResponse,
     ClientSearchParams, ClientPermissionUpdate, ClientPermissionResponse
 )
+from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.services.email_service import EmailService
 
 router = APIRouter()
@@ -54,7 +55,7 @@ def generate_secure_password(length: int = 12) -> str:
 async def create_client(
     client_data: ClientCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["Super Admin", "Organization Admin"]))
+    current_user: User = Depends(require_permission("clients", "create"))
 ):
     """Create a new client and their user account"""
 
@@ -173,7 +174,7 @@ async def create_client(
             detail=f"Failed to create client: {str(e)}"
         )
 
-@router.get("/", response_model=ClientListResponse)
+@router.get("/", response_model=PaginatedResponse[ClientResponse])
 async def list_clients(
     search: Optional[str] = Query(None, description="Search by name or client ID"),
     status: Optional[str] = Query(None, description="Filter by client status"),
@@ -222,12 +223,17 @@ async def list_clients(
         response.full_name = client.full_name
         client_responses.append(response)
 
-    return ClientListResponse(
-        items=client_responses,
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size
+    # Calculate total pages
+    pages = (total + page_size - 1) // page_size
+
+    return PaginatedResponse(
+        data=client_responses,
+        pagination=PaginationMeta(
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages
+        )
     )
 
 @router.get("/{client_id}", response_model=ClientResponse)
@@ -268,7 +274,7 @@ async def update_client(
     client_id: UUID,
     client_update: ClientUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["Super Admin", "Organization Admin", "Support Staff"]))
+    current_user: User = Depends(require_permission("clients", "update"))
 ):
     """Update client information"""
 
@@ -312,7 +318,7 @@ async def update_client(
 async def delete_client(
     client_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["Super Admin"]))
+    current_user: User = Depends(require_permission("clients", "delete"))
 ):
     """Soft delete a client"""
 
@@ -343,7 +349,7 @@ async def discharge_client(
     client_id: UUID,
     discharge_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["Super Admin", "Organization Admin", "Support Staff"]))
+    current_user: User = Depends(require_permission("clients", "update"))
 ):
     """Discharge a client"""
 
@@ -387,7 +393,7 @@ async def readmit_client(
     client_id: UUID,
     admission_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["Super Admin", "Organization Admin", "Support Staff"]))
+    current_user: User = Depends(require_permission("clients", "update"))
 ):
     """Readmit a discharged client"""
 
@@ -459,7 +465,7 @@ async def add_client_contact(
     client_id: UUID,
     contact_data: ClientContactCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["Super Admin", "Organization Admin", "Support Staff"]))
+    current_user: User = Depends(require_permission("clients", "update"))
 ):
     """Add a contact to a client"""
 
@@ -492,7 +498,7 @@ async def update_client_contact(
     contact_id: UUID,
     contact_update: ClientContactUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["Super Admin", "Organization Admin", "Support Staff"]))
+    current_user: User = Depends(require_permission("clients", "update"))
 ):
     """Update a client contact"""
 
@@ -524,7 +530,7 @@ async def delete_client_contact(
     client_id: UUID,
     contact_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["Super Admin", "Organization Admin", "Support Staff"]))
+    current_user: User = Depends(require_permission("clients", "update"))
 ):
     """Delete a client contact"""
 
@@ -550,7 +556,7 @@ async def update_client_permissions(
     client_id: UUID,
     permission_update: ClientPermissionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["Super Admin", "Organization Admin"]))
+    current_user: User = Depends(require_permission("clients", "update"))
 ):
     """Update client's role and/or custom permissions."""
 

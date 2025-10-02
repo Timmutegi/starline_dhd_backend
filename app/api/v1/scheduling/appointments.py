@@ -135,12 +135,18 @@ async def get_appointments(
         Appointment.organization_id == current_user.organization_id
     )
 
+    # If user is Support Staff (DSP), only show their appointments
+    if current_user.role and current_user.role.name == "Support Staff":
+        query = query.filter(Appointment.staff_id == current_user.id)
+
     # Apply filters
     if client_id:
         query = query.filter(Appointment.client_id == client_id)
 
     if staff_id:
-        query = query.filter(Appointment.staff_id == staff_id)
+        # Only allow filtering by staff_id if user is not Support Staff
+        if not (current_user.role and current_user.role.name == "Support Staff"):
+            query = query.filter(Appointment.staff_id == staff_id)
 
     if appointment_type:
         query = query.filter(Appointment.appointment_type == appointment_type)

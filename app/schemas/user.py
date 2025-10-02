@@ -99,6 +99,11 @@ class UserInDB(UserBase):
 
 class UserResponse(UserInDB):
     organization: Optional[OrganizationInDB] = None
+    role_name: Optional[str] = None
+    user_type: Optional[str] = None  # 'staff', 'client', or 'admin'
+
+    class Config:
+        from_attributes = True
 
 class ChangePassword(BaseModel):
     current_password: str
