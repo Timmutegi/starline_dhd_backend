@@ -82,22 +82,54 @@ async def get_current_shift(
     from app.models.scheduling import ShiftAssignment as ShiftClientAssignment
 
     # Get the first client assignment for this shift
-    shift_client_assignment = db.query(ShiftClientAssignment).filter(
+    from app.models.client import Client
+    shift_client_assignment = db.query(ShiftClientAssignment).options(
+        joinedload(ShiftClientAssignment.client)
+    ).filter(
         ShiftClientAssignment.shift_id == current_shift.id
     ).first()
 
     client_id = shift_client_assignment.client_id if shift_client_assignment else None
+    client = shift_client_assignment.client if shift_client_assignment else None
 
-    assignment = None
-    if client_id:
+    # If no specific client assigned to shift, get the first active staff assignment
+    if not client_id:
+        assignment = db.query(StaffAssignment).options(
+            joinedload(StaffAssignment.client)
+        ).filter(
+            StaffAssignment.staff_id == staff.id,
+            StaffAssignment.is_active == True
+        ).first()
+
+        if assignment and assignment.client:
+            client_id = assignment.client_id
+            client = assignment.client
+    else:
         assignment = db.query(StaffAssignment).filter(
             StaffAssignment.staff_id == staff.id,
             StaffAssignment.client_id == client_id,
             StaffAssignment.is_active == True
         ).first()
 
+    # Get location from client's current assignment
+    from app.models.client import ClientAssignment, ClientLocation
+    location_name = "Location Not Set"
+    location_address = ""
+
+    if client_id:
+        client_assignment = db.query(ClientAssignment).options(
+            joinedload(ClientAssignment.location)
+        ).filter(
+            ClientAssignment.client_id == client_id,
+            ClientAssignment.is_current == True
+        ).first()
+
+        if client_assignment and client_assignment.location:
+            location_name = client_assignment.location.name
+            location_address = client_assignment.location.address
+
     # Get tasks for this shift
-    from app.models.task import Task, TaskStatus
+    from app.models.task import Task, TaskStatusEnum
 
     tasks_query = db.query(Task).filter(
         Task.assigned_to == current_user.id,
@@ -106,7 +138,7 @@ async def get_current_shift(
     ) if client_id else db.query(Task).filter(Task.id == None)  # Empty query if no client
 
     total_tasks = tasks_query.count()
-    completed_tasks = tasks_query.filter(Task.status == TaskStatus.COMPLETED).count()
+    completed_tasks = tasks_query.filter(Task.status == TaskStatusEnum.COMPLETED).count()
 
     # Calculate time on shift
     from app.models.scheduling import TimeClockEntry, TimeEntryType
@@ -126,10 +158,6 @@ async def get_current_shift(
         minutes = int((elapsed.total_seconds() % 3600) // 60)
         time_on_shift = f"{hours}h {minutes}m"
 
-    # Build response
-    location_name = assignment.location.name if assignment and assignment.location else "Location Not Set"
-    location_address = assignment.location.address if assignment and assignment.location else ""
-
     return {
         "has_active_shift": True,
         "shift": {
@@ -141,10 +169,10 @@ async def get_current_shift(
             "notes": current_shift.notes
         },
         "client": {
-            "id": str(current_shift.client.id) if current_shift.client else None,
-            "full_name": current_shift.client.full_name if current_shift.client else "Unknown Client",
-            "client_id": current_shift.client.client_id if current_shift.client else None,
-            "special_needs": current_shift.client.primary_diagnosis if current_shift.client else None
+            "id": str(client.id) if client else None,
+            "full_name": client.full_name if client else "Unknown Client",
+            "client_id": client.client_id if client else None,
+            "special_needs": client.primary_diagnosis if client else None
         },
         "location": {
             "name": location_name,

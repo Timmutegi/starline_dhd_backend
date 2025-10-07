@@ -850,3 +850,323 @@ async def delete_meal_log(
             status_code=500,
             detail=f"Failed to delete meal log: {str(e)}"
         )
+
+
+# Activity Log Endpoints
+@router.post("/activities", response_model=ActivityLogResponse)
+async def create_activity_log(
+    activity_data: ActivityLogCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new activity log entry for a client
+    """
+    try:
+        # Verify client exists and user has access
+        client = db.query(Client).filter(
+            and_(
+                Client.id == activity_data.client_id,
+                Client.organization_id == current_user.organization_id
+            )
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        # Create activity log
+        activity_log = ActivityLog(
+            id=uuid.uuid4(),
+            client_id=activity_data.client_id,
+            staff_id=current_user.id,
+            organization_id=current_user.organization_id,
+            activity_type=activity_data.activity_type,
+            activity_name=activity_data.activity_name,
+            activity_description=activity_data.activity_description,
+            activity_date=activity_data.activity_date or datetime.utcnow(),
+            start_time=activity_data.start_time,
+            end_time=activity_data.end_time,
+            duration_minutes=activity_data.duration_minutes,
+            location=activity_data.location,
+            location_type=activity_data.location_type,
+            participation_level=activity_data.participation_level,
+            independence_level=activity_data.independence_level,
+            assistance_required=activity_data.assistance_required,
+            assistance_details=activity_data.assistance_details,
+            participants=activity_data.participants,
+            peer_interaction=activity_data.peer_interaction,
+            peer_interaction_quality=activity_data.peer_interaction_quality,
+            mood_before=activity_data.mood_before,
+            mood_during=activity_data.mood_during,
+            mood_after=activity_data.mood_after,
+            behavior_observations=activity_data.behavior_observations,
+            challenging_behaviors=activity_data.challenging_behaviors,
+            skills_practiced=activity_data.skills_practiced,
+            skills_progress=activity_data.skills_progress,
+            goals_addressed=activity_data.goals_addressed,
+            engagement_level=activity_data.engagement_level,
+            enjoyment_level=activity_data.enjoyment_level,
+            focus_attention=activity_data.focus_attention,
+            physical_complaints=activity_data.physical_complaints,
+            fatigue_level=activity_data.fatigue_level,
+            injuries_incidents=activity_data.injuries_incidents,
+            activity_completed=activity_data.activity_completed,
+            completion_percentage=activity_data.completion_percentage,
+            achievements=activity_data.achievements,
+            challenges_faced=activity_data.challenges_faced,
+            staff_notes=activity_data.staff_notes,
+            recommendations=activity_data.recommendations,
+            follow_up_needed=activity_data.follow_up_needed,
+            photo_urls=activity_data.photo_urls,
+            video_urls=activity_data.video_urls
+        )
+
+        db.add(activity_log)
+        db.commit()
+        db.refresh(activity_log)
+
+        # Get client and staff names
+        client_name = f"{client.first_name} {client.last_name}"
+        staff_name = f"{current_user.first_name} {current_user.last_name}"
+
+        return ActivityLogResponse(
+            id=str(activity_log.id),
+            client_id=str(activity_log.client_id),
+            client_name=client_name,
+            staff_id=str(activity_log.staff_id) if activity_log.staff_id else None,
+            staff_name=staff_name,
+            organization_id=str(activity_log.organization_id),
+            activity_type=activity_log.activity_type,
+            activity_name=activity_log.activity_name,
+            activity_description=activity_log.activity_description,
+            activity_date=activity_log.activity_date,
+            start_time=activity_log.start_time,
+            end_time=activity_log.end_time,
+            duration_minutes=activity_log.duration_minutes,
+            location=activity_log.location,
+            location_type=activity_log.location_type,
+            participation_level=activity_log.participation_level,
+            independence_level=activity_log.independence_level,
+            assistance_required=activity_log.assistance_required,
+            assistance_details=activity_log.assistance_details,
+            participants=activity_log.participants,
+            peer_interaction=activity_log.peer_interaction,
+            peer_interaction_quality=activity_log.peer_interaction_quality,
+            mood_before=activity_log.mood_before,
+            mood_during=activity_log.mood_during,
+            mood_after=activity_log.mood_after,
+            behavior_observations=activity_log.behavior_observations,
+            challenging_behaviors=activity_log.challenging_behaviors,
+            skills_practiced=activity_log.skills_practiced,
+            skills_progress=activity_log.skills_progress,
+            goals_addressed=activity_log.goals_addressed,
+            engagement_level=activity_log.engagement_level,
+            enjoyment_level=activity_log.enjoyment_level,
+            focus_attention=activity_log.focus_attention,
+            physical_complaints=activity_log.physical_complaints,
+            fatigue_level=activity_log.fatigue_level,
+            injuries_incidents=activity_log.injuries_incidents,
+            activity_completed=activity_log.activity_completed,
+            completion_percentage=activity_log.completion_percentage,
+            achievements=activity_log.achievements,
+            challenges_faced=activity_log.challenges_faced,
+            staff_notes=activity_log.staff_notes,
+            recommendations=activity_log.recommendations,
+            follow_up_needed=activity_log.follow_up_needed,
+            photo_urls=activity_log.photo_urls,
+            video_urls=activity_log.video_urls,
+            created_at=activity_log.created_at,
+            updated_at=activity_log.updated_at
+        )
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create activity log: {str(e)}"
+        )
+
+
+@router.get("/activities", response_model=List[ActivityLogResponse])
+async def get_activity_logs(
+    client_id: Optional[str] = None,
+    activity_date: Optional[date] = None,
+    activity_type: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get activity logs with optional filtering by client, date, or type
+    """
+    try:
+        query = db.query(ActivityLog).filter(
+            ActivityLog.organization_id == current_user.organization_id
+        )
+
+        if client_id:
+            query = query.filter(ActivityLog.client_id == client_id)
+
+        if activity_date:
+            query = query.filter(func.date(ActivityLog.activity_date) == activity_date)
+
+        if activity_type:
+            query = query.filter(ActivityLog.activity_type == activity_type)
+
+        activity_logs = query.order_by(ActivityLog.activity_date.desc()).all()
+
+        # Build response with client and staff names
+        response_list = []
+        for log in activity_logs:
+            # Get client name
+            client = db.query(Client).filter(Client.id == log.client_id).first()
+            client_name = f"{client.first_name} {client.last_name}" if client else "Unknown Client"
+
+            # Get staff name
+            staff_name = "Unknown Staff"
+            if log.staff_id:
+                staff = db.query(User).filter(User.id == log.staff_id).first()
+                staff_name = f"{staff.first_name} {staff.last_name}" if staff else "Unknown Staff"
+
+            response_list.append(ActivityLogResponse(
+                id=str(log.id),
+                client_id=str(log.client_id),
+                client_name=client_name,
+                staff_id=str(log.staff_id) if log.staff_id else None,
+                staff_name=staff_name,
+                organization_id=str(log.organization_id),
+                activity_type=log.activity_type,
+                activity_name=log.activity_name,
+                activity_description=log.activity_description,
+                activity_date=log.activity_date,
+                start_time=log.start_time,
+                end_time=log.end_time,
+                duration_minutes=log.duration_minutes,
+                location=log.location,
+                location_type=log.location_type,
+                participation_level=log.participation_level,
+                independence_level=log.independence_level,
+                assistance_required=log.assistance_required,
+                assistance_details=log.assistance_details,
+                participants=log.participants,
+                peer_interaction=log.peer_interaction,
+                peer_interaction_quality=log.peer_interaction_quality,
+                mood_before=log.mood_before,
+                mood_during=log.mood_during,
+                mood_after=log.mood_after,
+                behavior_observations=log.behavior_observations,
+                challenging_behaviors=log.challenging_behaviors,
+                skills_practiced=log.skills_practiced,
+                skills_progress=log.skills_progress,
+                goals_addressed=log.goals_addressed,
+                engagement_level=log.engagement_level,
+                enjoyment_level=log.enjoyment_level,
+                focus_attention=log.focus_attention,
+                physical_complaints=log.physical_complaints,
+                fatigue_level=log.fatigue_level,
+                injuries_incidents=log.injuries_incidents,
+                activity_completed=log.activity_completed,
+                completion_percentage=log.completion_percentage,
+                achievements=log.achievements,
+                challenges_faced=log.challenges_faced,
+                staff_notes=log.staff_notes,
+                recommendations=log.recommendations,
+                follow_up_needed=log.follow_up_needed,
+                photo_urls=log.photo_urls,
+                video_urls=log.video_urls,
+                created_at=log.created_at,
+                updated_at=log.updated_at
+            ))
+
+        return response_list
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch activity logs: {str(e)}"
+        )
+
+
+@router.get("/activities/{activity_log_id}", response_model=ActivityLogResponse)
+async def get_activity_log(
+    activity_log_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get a specific activity log by ID
+    """
+    try:
+        activity_log = db.query(ActivityLog).filter(
+            and_(
+                ActivityLog.id == activity_log_id,
+                ActivityLog.organization_id == current_user.organization_id
+            )
+        ).first()
+
+        if not activity_log:
+            raise HTTPException(status_code=404, detail="Activity log not found")
+
+        # Get client and staff names
+        client = db.query(Client).filter(Client.id == activity_log.client_id).first()
+        client_name = f"{client.first_name} {client.last_name}" if client else "Unknown Client"
+
+        staff_name = "Unknown Staff"
+        if activity_log.staff_id:
+            staff = db.query(User).filter(User.id == activity_log.staff_id).first()
+            staff_name = f"{staff.first_name} {staff.last_name}" if staff else "Unknown Staff"
+
+        return ActivityLogResponse(
+            id=str(activity_log.id),
+            client_id=str(activity_log.client_id),
+            client_name=client_name,
+            staff_id=str(activity_log.staff_id) if activity_log.staff_id else None,
+            staff_name=staff_name,
+            organization_id=str(activity_log.organization_id),
+            activity_type=activity_log.activity_type,
+            activity_name=activity_log.activity_name,
+            activity_description=activity_log.activity_description,
+            activity_date=activity_log.activity_date,
+            start_time=activity_log.start_time,
+            end_time=activity_log.end_time,
+            duration_minutes=activity_log.duration_minutes,
+            location=activity_log.location,
+            location_type=activity_log.location_type,
+            participation_level=activity_log.participation_level,
+            independence_level=activity_log.independence_level,
+            assistance_required=activity_log.assistance_required,
+            assistance_details=activity_log.assistance_details,
+            participants=activity_log.participants,
+            peer_interaction=activity_log.peer_interaction,
+            peer_interaction_quality=activity_log.peer_interaction_quality,
+            mood_before=activity_log.mood_before,
+            mood_during=activity_log.mood_during,
+            mood_after=activity_log.mood_after,
+            behavior_observations=activity_log.behavior_observations,
+            challenging_behaviors=activity_log.challenging_behaviors,
+            skills_practiced=activity_log.skills_practiced,
+            skills_progress=activity_log.skills_progress,
+            goals_addressed=activity_log.goals_addressed,
+            engagement_level=activity_log.engagement_level,
+            enjoyment_level=activity_log.enjoyment_level,
+            focus_attention=activity_log.focus_attention,
+            physical_complaints=activity_log.physical_complaints,
+            fatigue_level=activity_log.fatigue_level,
+            injuries_incidents=activity_log.injuries_incidents,
+            activity_completed=activity_log.activity_completed,
+            completion_percentage=activity_log.completion_percentage,
+            achievements=activity_log.achievements,
+            challenges_faced=activity_log.challenges_faced,
+            staff_notes=activity_log.staff_notes,
+            recommendations=activity_log.recommendations,
+            follow_up_needed=activity_log.follow_up_needed,
+            photo_urls=activity_log.photo_urls,
+            video_urls=activity_log.video_urls,
+            created_at=activity_log.created_at,
+            updated_at=activity_log.updated_at
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch activity log: {str(e)}"
+        )

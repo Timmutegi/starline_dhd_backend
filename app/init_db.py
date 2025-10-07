@@ -102,6 +102,8 @@ def init_db():
             ("compliance", "read", "View compliance reports"),
             ("compliance", "manage_violations", "Manage compliance violations"),
             ("compliance", "generate_reports", "Generate compliance reports"),
+            # Notifications permissions
+            ("notifications", "read", "View notifications"),
         ]
 
         permissions = {}
@@ -157,7 +159,12 @@ def init_db():
                 permissions["clients:read"], permissions["clients:update"],
                 permissions["documentation:create"], permissions["documentation:read"],
                 permissions["documentation:update"], permissions["reports:read"],
-                permissions["staff:read"]  # Can view basic staff info
+                permissions["staff:read"],  # Can view basic staff info
+                permissions["appointments:read"], permissions["appointments:create"],
+                permissions["appointments:update"],  # Can manage appointments
+                permissions["scheduling:read"],  # Can view schedules and shifts
+                permissions["time_clock:create"],  # Can clock in/out
+                permissions["notifications:read"]  # Can view notifications
             ]),
             ("Billing Admin", "Financial and billing access", False, [
                 permissions["billing:create"], permissions["billing:read"],

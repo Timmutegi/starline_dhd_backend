@@ -17,7 +17,7 @@ load_dotenv()
 
 # Configuration
 ENVIRONMENT = os.getenv("ENVIRONMENT", "DEV").upper()
-BASE_URL = "http://localhost:8000/api/v1" if ENVIRONMENT == "DEV" else "https://dla74pfa6wcvm.cloudfront.net/api/v1"
+BASE_URL = "http://localhost:8000/api/v1" if ENVIRONMENT in ["DEV", "DEVELOPMENT"] else "https://dla74pfa6wcvm.cloudfront.net/api/v1"
 
 # Admin credentials from .env
 ADMIN_EMAIL = os.getenv("DEFAULT_ADMIN_EMAIL", "support@starline.com")
@@ -63,8 +63,8 @@ def print_warning(message: str):
     print(f"{Colors.WARNING}⚠ {message}{Colors.ENDC}")
 
 
-def login() -> Optional[str]:
-    """Login and get access token"""
+def login() -> tuple[Optional[str], Optional[Dict]]:
+    """Login and get access token and user data"""
     print_info(f"Logging in as {ADMIN_EMAIL}...")
 
     try:
@@ -83,14 +83,14 @@ def login() -> Optional[str]:
             user = data['user']
             full_name = f"{user['first_name']} {user['last_name']}"
             print_success(f"Logged in successfully as {full_name}")
-            return data["access_token"]
+            return data["access_token"], user
         else:
             print_error(f"Login failed: {response.status_code} - {response.text}")
-            return None
+            return None, None
 
     except Exception as e:
         print_error(f"Login error: {str(e)}")
-        return None
+        return None, None
 
 
 def create_client(token: str, client_data: Dict) -> Optional[Dict]:
@@ -105,7 +105,7 @@ def create_client(token: str, client_data: Dict) -> Optional[Dict]:
             }
         )
 
-        if response.status_code == 201:
+        if response.status_code in [200, 201]:
             result = response.json()
             client = result["client"]
             temp_password = result["temporary_password"]
@@ -175,7 +175,7 @@ def assign_staff_to_client(token: str, staff_id: str, client_id: str, assignment
             }
         )
 
-        if response.status_code == 201:
+        if response.status_code in [200, 201]:
             assignment = response.json()
             print_success(f"Assigned staff to client (Assignment ID: {assignment['id']})")
             return assignment
@@ -317,7 +317,7 @@ def create_location(token: str, location_data: Dict) -> Optional[Dict]:
     """Create a location using the API"""
     try:
         response = requests.post(
-            f"{BASE_URL}/locations",
+            f"{BASE_URL}/clients/locations",
             json=location_data,
             headers={
                 "Authorization": f"Bearer {token}",
@@ -325,7 +325,7 @@ def create_location(token: str, location_data: Dict) -> Optional[Dict]:
             }
         )
 
-        if response.status_code == 201:
+        if response.status_code in [200, 201]:
             return response.json()
         else:
             print_error(f"Failed to create location: {response.status_code} - {response.text}")
@@ -348,7 +348,7 @@ def assign_client_to_location(token: str, client_id: str, assignment_data: Dict)
             }
         )
 
-        if response.status_code == 201:
+        if response.status_code in [200, 201]:
             return response.json()
         else:
             print_error(f"Failed to assign client to location: {response.status_code} - {response.text}")
@@ -374,7 +374,7 @@ def create_schedule(token: str, schedule_data: Dict, org_id: str) -> Optional[Di
             }
         )
 
-        if response.status_code == 201:
+        if response.status_code in [200, 201]:
             return response.json()
         else:
             print_error(f"Failed to create schedule: {response.status_code} - {response.text}")
@@ -397,7 +397,7 @@ def create_shift(token: str, shift_data: Dict) -> Optional[Dict]:
             }
         )
 
-        if response.status_code == 201:
+        if response.status_code in [200, 201]:
             return response.json()
         else:
             print_error(f"Failed to create shift: {response.status_code} - {response.text}")
@@ -433,7 +433,7 @@ def create_notification(token: str, notification_data: Dict) -> Optional[Dict]:
     """Create a notification using the API"""
     try:
         response = requests.post(
-            f"{BASE_URL}/notifications",
+            f"{BASE_URL}/notifications/create",
             json=notification_data,
             headers={
                 "Authorization": f"Bearer {token}",
@@ -444,9 +444,11 @@ def create_notification(token: str, notification_data: Dict) -> Optional[Dict]:
         if response.status_code in [200, 201]:
             return response.json()
         else:
+            print_error(f"Failed to create notification: {response.status_code} - {response.text}")
             return None
 
     except Exception as e:
+        print_error(f"Error creating notification: {str(e)}")
         return None
 
 
@@ -473,6 +475,378 @@ def create_appointment(token: str, appointment_data: Dict) -> Optional[Dict]:
         return None
 
 
+def seed_training_courses(token: str, org_id: str, admin_user_id: str, tim_user_id: str):
+    """Seed training courses and progress for tim@kaziflex.com"""
+    print_header("SEEDING TRAINING COURSES")
+
+    courses_data = [
+        {
+            "title": "HIPAA Compliance Training",
+            "description": "Comprehensive training on HIPAA regulations and patient privacy",
+            "course_type": "video",
+            "duration_minutes": 45,
+            "is_required": True,
+            "passing_score": 80,
+            "provides_certification": True,
+            "certification_valid_days": 365,
+            "status": "active"
+        },
+        {
+            "title": "Emergency Response Procedures",
+            "description": "Learn how to respond to medical emergencies and safety protocols",
+            "course_type": "interactive",
+            "duration_minutes": 30,
+            "is_required": True,
+            "passing_score": 85,
+            "provides_certification": True,
+            "certification_valid_days": 180,
+            "status": "active"
+        },
+        {
+            "title": "Medication Administration Safety",
+            "description": "Safe medication administration practices and documentation",
+            "course_type": "document",
+            "duration_minutes": 20,
+            "is_required": True,
+            "passing_score": 90,
+            "provides_certification": False,
+            "status": "active"
+        },
+        {
+            "title": "Client Communication Best Practices",
+            "description": "Effective communication strategies for working with clients",
+            "course_type": "video",
+            "duration_minutes": 35,
+            "is_required": False,
+            "passing_score": 75,
+            "provides_certification": True,
+            "certification_valid_days": 365,
+            "status": "active"
+        }
+    ]
+
+    created_courses = []
+
+    try:
+        for course_data in courses_data:
+            response = requests.post(
+                f"{BASE_URL}/training/courses",
+                headers={"Authorization": f"Bearer {token}"},
+                json=course_data
+            )
+
+            if response.status_code in [200, 201]:
+                course = response.json()
+                created_courses.append(course)
+                print_success(f"Created course: {course_data['title']}")
+            else:
+                print_error(f"Failed to create course {course_data['title']}: {response.status_code}")
+
+        # Now create progress for Tim
+        if created_courses:
+            print_info(f"\nCreating training progress for Tim...")
+
+            # Course 1: HIPAA - Completed
+            if len(created_courses) > 0:
+                course_id = created_courses[0]['id']
+                requests.post(
+                    f"{BASE_URL}/training/courses/{course_id}/start",
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+                response = requests.post(
+                    f"{BASE_URL}/training/courses/{course_id}/complete",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"quiz_score": 95}
+                )
+                if response.status_code == 200:
+                    print_success(f"  ✓ Completed: HIPAA Compliance Training (95%)")
+
+            # Course 2: Emergency Response - In Progress (65%)
+            if len(created_courses) > 1:
+                course_id = created_courses[1]['id']
+                requests.post(
+                    f"{BASE_URL}/training/courses/{course_id}/start",
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+                # Update progress to 65%
+                progress_response = requests.get(
+                    f"{BASE_URL}/training/progress",
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+                if progress_response.status_code == 200:
+                    progress_records = progress_response.json()
+                    for prog in progress_records:
+                        if prog['course_id'] == course_id:
+                            requests.put(
+                                f"{BASE_URL}/training/progress/{prog['id']}",
+                                headers={"Authorization": f"Bearer {token}"},
+                                json={"progress_percentage": 65, "status": "in_progress"}
+                            )
+                            print_success(f"  ⏳ In Progress: Emergency Response Procedures (65%)")
+                            break
+
+            # Course 3: Medication Safety - Not Started (leave as is)
+            if len(created_courses) > 2:
+                print_success(f"  📝 Not Started: Medication Administration Safety")
+
+            # Course 4: Communication - Completed
+            if len(created_courses) > 3:
+                course_id = created_courses[3]['id']
+                requests.post(
+                    f"{BASE_URL}/training/courses/{course_id}/start",
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+                response = requests.post(
+                    f"{BASE_URL}/training/courses/{course_id}/complete",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"quiz_score": 88}
+                )
+                if response.status_code == 200:
+                    print_success(f"  ✓ Completed: Client Communication Best Practices (88%)")
+
+        return created_courses
+
+    except Exception as e:
+        print_error(f"Error seeding training courses: {str(e)}")
+        return []
+
+
+def seed_notices(token: str, org_id: str, admin_user_id: str):
+    """Seed notices/announcements"""
+    print_header("SEEDING NOTICES")
+
+    from datetime import datetime, timedelta
+
+    notices_data = [
+        {
+            "title": "Updated Safety Protocols",
+            "content": "Please review the updated safety protocols in the training portal. All staff must acknowledge receipt by end of week.",
+            "summary": "New safety protocols require review and acknowledgment",
+            "priority": "high",
+            "category": "safety",
+            "is_active": True,
+            "publish_date": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+            "requires_acknowledgment": True
+        },
+        {
+            "title": "New Client Assignment System",
+            "content": "We have implemented a new client assignment system. Please familiarize yourself with the updated dashboard and assignment workflow.",
+            "summary": "Updated client assignment system launched",
+            "priority": "medium",
+            "category": "system",
+            "is_active": True,
+            "publish_date": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+            "requires_acknowledgment": False
+        },
+        {
+            "title": "Staff Meeting Reminder",
+            "content": "Monthly staff meeting scheduled for Friday at 2 PM in Conference Room A. Agenda includes policy updates and training requirements.",
+            "summary": "Monthly staff meeting - Friday 2 PM",
+            "priority": "low",
+            "category": "general",
+            "is_active": True,
+            "publish_date": (datetime.utcnow() - timedelta(days=5)).isoformat(),
+            "requires_acknowledgment": False
+        },
+        {
+            "title": "Emergency Preparedness Training",
+            "content": "Mandatory emergency preparedness training session next week. Please complete the online module before attending.",
+            "summary": "Mandatory emergency training next week",
+            "priority": "high",
+            "category": "training",
+            "is_active": True,
+            "publish_date": datetime.utcnow().isoformat(),
+            "requires_acknowledgment": True
+        },
+        {
+            "title": "Updated Documentation Requirements",
+            "content": "New documentation requirements are now in effect. All activity logs must include detailed observations and client responses.",
+            "summary": "Enhanced documentation requirements",
+            "priority": "medium",
+            "category": "policy",
+            "is_active": True,
+            "publish_date": (datetime.utcnow() - timedelta(days=2)).isoformat(),
+            "requires_acknowledgment": True
+        }
+    ]
+
+    created_notices = []
+
+    try:
+        for notice_data in notices_data:
+            response = requests.post(
+                f"{BASE_URL}/notices",
+                headers={"Authorization": f"Bearer {token}"},
+                json=notice_data
+            )
+
+            if response.status_code in [200, 201]:
+                notice = response.json()
+                created_notices.append(notice)
+                priority_emoji = "🔴" if notice_data['priority'] == 'high' else "🟡" if notice_data['priority'] == 'medium' else "🟢"
+                print_success(f"Created notice: {priority_emoji} {notice_data['title']}")
+            else:
+                print_error(f"Failed to create notice {notice_data['title']}: {response.status_code}")
+
+        # Mark some notices as read for Tim (simulate history)
+        if len(created_notices) >= 2:
+            print_info(f"\nMarking some notices as read for Tim...")
+            # Mark notice 2 and 3 as read
+            for i in [1, 2]:
+                if i < len(created_notices):
+                    notice_id = created_notices[i]['id']
+                    requests.post(
+                        f"{BASE_URL}/notices/{notice_id}/read",
+                        headers={"Authorization": f"Bearer {token}"}
+                    )
+                    print_success(f"  ✓ Marked as read: {created_notices[i]['title']}")
+
+        return created_notices
+
+    except Exception as e:
+        print_error(f"Error seeding notices: {str(e)}")
+        return []
+
+
+def seed_activities(token: str, clients: list, staff_member: dict):
+    """Seed activity logs for clients"""
+    print_header("SEEDING ACTIVITIES")
+
+    from datetime import datetime, timedelta
+
+    if not clients or not staff_member:
+        print_warning("No clients or staff member found. Skipping activities.")
+        return []
+
+    activities_data = []
+
+    # Activity for each client
+    activity_templates = [
+        {
+            "activity_type": "therapeutic",
+            "activity_name": "Physical Therapy Session",
+            "activity_description": "Upper body strength exercises and mobility training",
+            "location": "Therapy Room",
+            "location_type": "facility",
+            "participation_level": "full",
+            "independence_level": "supervised",
+            "mood_during": "content",
+            "activity_completed": True,
+            "completion_percentage": 100,
+            "start_time": "09:00 AM",
+            "end_time": "10:00 AM",
+            "duration_minutes": 60
+        },
+        {
+            "activity_type": "therapeutic",
+            "activity_name": "Occupational Therapy",
+            "activity_description": "Fine motor skills practice and daily living activities",
+            "location": "OT Room",
+            "location_type": "facility",
+            "participation_level": "full",
+            "independence_level": "assisted",
+            "mood_during": "happy",
+            "activity_completed": True,
+            "completion_percentage": 100,
+            "start_time": "10:30 AM",
+            "end_time": "11:30 AM",
+            "duration_minutes": 60
+        },
+        {
+            "activity_type": "exercise",
+            "activity_name": "Group Exercise Class",
+            "activity_description": "Low-impact aerobics and stretching exercises",
+            "location": "Activity Center",
+            "location_type": "facility",
+            "participation_level": "partial",
+            "independence_level": "supervised",
+            "mood_during": "content",
+            "activity_completed": False,
+            "completion_percentage": 60,
+            "start_time": "02:00 PM",
+            "end_time": "03:00 PM",
+            "duration_minutes": 60
+        },
+        {
+            "activity_type": "social",
+            "activity_name": "Music Therapy",
+            "activity_description": "Group music session with singing and instrument playing",
+            "location": "Community Room",
+            "location_type": "facility",
+            "participation_level": "full",
+            "independence_level": "independent",
+            "mood_during": "happy",
+            "activity_completed": True,
+            "completion_percentage": 100,
+            "start_time": "03:30 PM",
+            "end_time": "04:30 PM",
+            "duration_minutes": 60
+        }
+    ]
+
+    created_activities = []
+
+    try:
+        today = datetime.utcnow()
+
+        # Create activities for each client
+        for i, client in enumerate(clients[:4]):  # First 4 clients
+            if i < len(activity_templates):
+                activity_data = activity_templates[i].copy()
+                activity_data['client_id'] = client['id']
+                activity_data['activity_date'] = today.isoformat()
+
+                response = requests.post(
+                    f"{BASE_URL}/documentation/activities",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json=activity_data
+                )
+
+                if response.status_code in [200, 201]:
+                    activity = response.json()
+                    created_activities.append(activity)
+                    status = "✓" if activity_data['activity_completed'] else "⏳"
+                    print_success(f"{status} Created: {activity_data['activity_name']} for {client['first_name']} {client['last_name']}")
+                else:
+                    print_error(f"Failed to create activity: {response.status_code}")
+
+        # Create some past activities for history
+        print_info(f"\nCreating historical activities...")
+        for client in clients[:2]:
+            past_activity = {
+                "client_id": client['id'],
+                "activity_type": "recreational",
+                "activity_name": "Arts and Crafts",
+                "activity_description": "Painting and drawing session",
+                "activity_date": (today - timedelta(days=1)).isoformat(),
+                "start_time": "02:00 PM",
+                "end_time": "03:30 PM",
+                "duration_minutes": 90,
+                "location": "Art Studio",
+                "location_type": "facility",
+                "participation_level": "full",
+                "independence_level": "supervised",
+                "mood_during": "happy",
+                "activity_completed": True,
+                "completion_percentage": 100
+            }
+
+            response = requests.post(
+                f"{BASE_URL}/documentation/activities",
+                headers={"Authorization": f"Bearer {token}"},
+                json=past_activity
+            )
+
+            if response.status_code == 201:
+                print_success(f"  ✓ Historical: Arts and Crafts for {client['first_name']}")
+
+        return created_activities
+
+    except Exception as e:
+        print_error(f"Error seeding activities: {str(e)}")
+        return []
+
+
 def main():
     """Main seeding function"""
     print_header("STARLINE DATABASE SEEDING SCRIPT")
@@ -482,10 +856,21 @@ def main():
     print()
 
     # Login
-    token = login()
-    if not token:
+    token, admin_user = login()
+    if not token or not admin_user:
         print_error("Failed to login. Exiting...")
         sys.exit(1)
+
+    # Get admin user info from login response
+    admin_user_id = admin_user.get('id')
+    org_id = admin_user.get('organization_id')
+
+    if not admin_user_id or not org_id:
+        print_error("Failed to get admin user info from login response. Exiting...")
+        sys.exit(1)
+
+    print_success(f"Admin User ID: {admin_user_id}")
+    print_success(f"Organization ID: {org_id}")
 
     # Get roles
     print_info("\nFetching available roles...")
@@ -658,29 +1043,38 @@ def main():
 
     print_success(f"\nCreated {len(staff_members)} staff members successfully!")
 
-    # Assign first staff member to first client
+    # Assign first staff member (tim@kaziflex.com) to ALL clients
     print_header("CREATING STAFF ASSIGNMENTS")
 
+    assignments = []
     if len(staff_members) > 0 and len(clients) > 0:
-        assignment_data = {
-            "client_id": clients[0]["id"],
-            "assignment_type": "primary",
-            "start_date": str(date.today()),
-            "notes": "Primary care provider for client"
-        }
+        tim_staff = staff_members[0]  # tim@kaziflex.com
 
-        print_info(f"Assigning {staff_members[0]['full_name']} to {clients[0]['full_name']}...")
-        assignment = assign_staff_to_client(
-            token,
-            staff_members[0]["id"],
-            clients[0]["id"],
-            assignment_data
-        )
+        # Assign tim to all 4 clients
+        for i, client in enumerate(clients):
+            assignment_type = "primary" if i == 0 else "secondary"
+            assignment_data = {
+                "client_id": client["id"],
+                "assignment_type": assignment_type,
+                "start_date": str(date.today() - timedelta(days=30 * i)),  # Stagger start dates
+                "notes": f"{'Primary' if i == 0 else 'Secondary'} care provider for {client['full_name']}"
+            }
 
-        if assignment:
-            print_success("\nAssignment created successfully!")
-        else:
-            print_error("\nFailed to create assignment")
+            print_info(f"Assigning {tim_staff['full_name']} to {client['full_name']}...")
+            assignment = assign_staff_to_client(
+                token,
+                tim_staff["id"],
+                client["id"],
+                assignment_data
+            )
+
+            if assignment:
+                assignments.append(assignment)
+                print_success(f"  ✓ Assigned to {client['full_name']}")
+            else:
+                print_error(f"  ✗ Failed to assign to {client['full_name']}")
+
+    print_success(f"\nCreated {len(assignments)} staff assignments")
 
     # Create Tasks
     print_header("CREATING TASKS")
@@ -871,12 +1265,82 @@ def main():
 
     print_success(f"\nCreated {len(incidents)} incident reports")
 
-    # Note: Location creation endpoint not available in current API
-    # Locations should be created via admin interface or separate management endpoint
-    print_info("\nℹ Note: Locations should be created via admin interface")
+    # Create Locations
+    print_header("CREATING LOCATIONS")
+
+    locations_data = [
+        {
+            "name": "Main Residence - Maple Street",
+            "address": "123 Maple Street",
+            "city": "Springfield",
+            "state": "IL",
+            "zip_code": "62701",
+            "phone": "+1-555-1000",
+            "type": "residential",
+            "capacity": 6
+        },
+        {
+            "name": "Community Living Center",
+            "address": "456 Oak Avenue",
+            "city": "Springfield",
+            "state": "IL",
+            "zip_code": "62702",
+            "phone": "+1-555-1001",
+            "type": "residential",
+            "capacity": 8
+        },
+        {
+            "name": "Independence Day Program",
+            "address": "789 Pine Road",
+            "city": "Springfield",
+            "state": "IL",
+            "zip_code": "62703",
+            "phone": "+1-555-1002",
+            "type": "day_program",
+            "capacity": 15
+        },
+        {
+            "name": "Community Integration Center",
+            "address": "321 Elm Street",
+            "city": "Springfield",
+            "state": "IL",
+            "zip_code": "62704",
+            "phone": "+1-555-1003",
+            "type": "community",
+            "capacity": 20
+        }
+    ]
 
     locations = []
+    for location_data in locations_data:
+        location = create_location(token, location_data)
+        if location:
+            locations.append(location)
+            print_success(f"Created location: {location_data['name']}")
+
+    print_success(f"\nCreated {len(locations)} locations")
+
+    # Assign Clients to Locations
+    print_header("ASSIGNING CLIENTS TO LOCATIONS")
+
     client_location_assignments = []
+    if len(clients) > 0 and len(locations) > 0:
+        # Assign each client to a location
+        for i, client in enumerate(clients):
+            location_index = i % len(locations)  # Distribute clients across locations
+            assignment_data = {
+                "location_id": locations[location_index]["id"],
+                "start_date": str(date.today() - timedelta(days=30)),
+                "room_number": f"Room {100 + i}",
+                "bed_number": f"Bed {i + 1}"
+            }
+
+            assignment = assign_client_to_location(token, client["id"], assignment_data)
+            if assignment:
+                client_location_assignments.append(assignment)
+                print_success(f"Assigned {client['first_name']} {client['last_name']} to {locations[location_index]['name']}")
+
+    print_success(f"\nCreated {len(client_location_assignments)} client-location assignments")
 
     # Create Schedules and Shifts for tim@kaziflex.com (first staff member)
     print_header("CREATING SCHEDULES AND SHIFTS")
@@ -959,6 +1423,7 @@ def main():
         org_id = staff_members[0]["organization_id"]
 
         appointments_data = [
+            # Today's appointments
             {
                 "organization_id": org_id,
                 "client_id": clients[0]["id"],
@@ -982,6 +1447,56 @@ def main():
                 "location": "Wellness Center",
                 "notes": "Physical therapy session",
                 "status": "scheduled"
+            },
+            # Tomorrow's appointments
+            {
+                "organization_id": org_id,
+                "client_id": clients[2]["id"] if len(clients) > 2 else clients[0]["id"],
+                "staff_id": staff_members[0]["id"],
+                "title": "Dental Checkup",
+                "appointment_type": "medical",
+                "start_datetime": f"{date.today() + timedelta(days=1)}T10:00:00",
+                "end_datetime": f"{date.today() + timedelta(days=1)}T11:00:00",
+                "location": "Family Dental Care",
+                "notes": "Routine dental examination and cleaning",
+                "status": "scheduled"
+            },
+            {
+                "organization_id": org_id,
+                "client_id": clients[3]["id"] if len(clients) > 3 else clients[0]["id"],
+                "staff_id": staff_members[0]["id"],
+                "title": "Occupational Therapy",
+                "appointment_type": "therapy",
+                "start_datetime": f"{date.today() + timedelta(days=1)}T13:00:00",
+                "end_datetime": f"{date.today() + timedelta(days=1)}T14:00:00",
+                "location": "Rehabilitation Center",
+                "notes": "Fine motor skills development",
+                "status": "scheduled"
+            },
+            # This week's appointments
+            {
+                "organization_id": org_id,
+                "client_id": clients[1]["id"] if len(clients) > 1 else clients[0]["id"],
+                "staff_id": staff_members[0]["id"],
+                "title": "Community Outing",
+                "appointment_type": "outing",
+                "start_datetime": f"{date.today() + timedelta(days=3)}T10:00:00",
+                "end_datetime": f"{date.today() + timedelta(days=3)}T12:00:00",
+                "location": "City Park",
+                "notes": "Social skills development activity",
+                "status": "scheduled"
+            },
+            {
+                "organization_id": org_id,
+                "client_id": clients[0]["id"],
+                "staff_id": staff_members[0]["id"],
+                "title": "Psychiatrist Appointment",
+                "appointment_type": "medical",
+                "start_datetime": f"{date.today() + timedelta(days=5)}T11:00:00",
+                "end_datetime": f"{date.today() + timedelta(days=5)}T12:00:00",
+                "location": "Mental Health Clinic",
+                "notes": "Medication review and therapy session",
+                "status": "scheduled"
             }
         ]
 
@@ -999,26 +1514,64 @@ def main():
     notifications_created = []
     if len(clients) > 0 and len(staff_members) > 0:
         notifications_data = [
+            # Critical notifications
             {
                 "user_id": staff_members[0]["user"]["id"],
-                "title": "Vitals Entry Due",
-                "message": f"Scheduled vitals for {clients[0]['full_name']} at 2:00 PM.",
-                "category": "reminder",
-                "priority": "medium"
-            },
-            {
-                "user_id": staff_members[0]["user"]["id"],
-                "title": "Meal Log Missing",
-                "message": f"No lunch intake recorded for {clients[1]['full_name'] if len(clients) > 1 else clients[0]['full_name']}.",
-                "category": "reminder",
-                "priority": "medium"
+                "title": "Missed Medication",
+                "message": f"{clients[0]['full_name']}'s 8:00 AM dose not logged.",
+                "type": "critical",
+                "category": "medication"
             },
             {
                 "user_id": staff_members[0]["user"]["id"],
                 "title": "Incident Form Pending",
-                "message": "Shift incident needs submission.",
-                "category": "critical",
-                "priority": "high"
+                "message": f"Shift incident for {clients[2]['full_name'] if len(clients) > 2 else clients[0]['full_name']} needs submission.",
+                "type": "critical",
+                "category": "incident"
+            },
+            # Reminder notifications
+            {
+                "user_id": staff_members[0]["user"]["id"],
+                "title": "Meal Log Missing",
+                "message": f"No lunch intake recorded for {clients[1]['full_name'] if len(clients) > 1 else clients[0]['full_name']}.",
+                "type": "reminder",
+                "category": "general"
+            },
+            {
+                "user_id": staff_members[0]["user"]["id"],
+                "title": "Vitals Entry Due",
+                "message": f"Scheduled vitals for {clients[0]['full_name']} at 2:00 PM.",
+                "type": "reminder",
+                "category": "task"
+            },
+            {
+                "user_id": staff_members[0]["user"]["id"],
+                "title": "Appointment Reminder",
+                "message": f"{clients[3]['full_name'] if len(clients) > 3 else clients[0]['full_name']} has a doctor's appointment at 3:00 PM.",
+                "type": "reminder",
+                "category": "appointment"
+            },
+            # Info notifications
+            {
+                "user_id": staff_members[0]["user"]["id"],
+                "title": "New Form Added",
+                "message": '"Daily Risk Tracking" form now available in Documentation.',
+                "type": "info",
+                "category": "system"
+            },
+            {
+                "user_id": staff_members[0]["user"]["id"],
+                "title": "Shift Schedule Updated",
+                "message": "Your schedule for next week has been updated.",
+                "type": "info",
+                "category": "schedule"
+            },
+            {
+                "user_id": staff_members[0]["user"]["id"],
+                "title": "Training Reminder",
+                "message": "CPR certification renewal due in 30 days.",
+                "type": "reminder",
+                "category": "general"
             }
         ]
 
@@ -1035,7 +1588,7 @@ def main():
 
     print_success(f"✓ Created {len(clients)} clients")
     print_success(f"✓ Created {len(staff_members)} staff members")
-    print_success(f"✓ Created 1 staff assignment")
+    print_success(f"✓ Created {len(assignments)} staff assignments")
     print_success(f"✓ Created {len(locations)} locations")
     print_success(f"✓ Created {len(client_location_assignments)} client-location assignments")
     print_success(f"✓ Created {len(schedules)} schedules")
@@ -1047,6 +1600,45 @@ def main():
     print_success(f"✓ Created {len(shift_notes)} shift notes")
     print_success(f"✓ Created {len(meal_logs)} meal logs")
     print_success(f"✓ Created {len(incidents)} incident reports")
+
+    # Seed Training Courses (login as Tim)
+    tim_staff = staff_members[0] if staff_members else None
+    tim_user_id = tim_staff['user']['id'] if tim_staff else None
+    tim_password = tim_staff.get('temporary_password') if tim_staff else None
+
+    if tim_user_id and admin_user_id and org_id and tim_password:
+        # Login as Tim to create his training progress
+        tim_token_response = requests.post(
+            f"{BASE_URL}/auth/login",
+            json={"email": "tim@kaziflex.com", "password": tim_password}
+        )
+        if tim_token_response.status_code == 200:
+            tim_token = tim_token_response.json()["access_token"]
+            training_courses = seed_training_courses(tim_token, org_id, admin_user_id, tim_user_id)
+            print_success(f"✓ Created {len(training_courses)} training courses")
+        else:
+            print_warning(f"Could not login as Tim. Status: {tim_token_response.status_code}")
+            print_warning(f"Response: {tim_token_response.text}")
+            training_courses = []
+    else:
+        print_warning("Missing required data for training courses seeding")
+        training_courses = []
+
+    # Seed Notices (as admin)
+    if admin_user_id and org_id:
+        notices = seed_notices(token, org_id, admin_user_id)
+        print_success(f"✓ Created {len(notices)} notices")
+    else:
+        print_warning("Missing required data for notices seeding")
+        notices = []
+
+    # Seed Activities (as admin/Tim)
+    if clients and staff_members:
+        activities = seed_activities(token, clients, staff_members[0])
+        print_success(f"✓ Created {len(activities)} activity logs")
+    else:
+        print_warning("Missing required data for activities seeding")
+        activities = []
 
     # Display credentials table for clients
     if clients:

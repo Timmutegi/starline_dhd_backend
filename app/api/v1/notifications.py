@@ -14,16 +14,17 @@ from app.schemas.notification import (
     NotificationStats,
     BulkNotificationAction
 )
+from app.schemas.common import PaginatedResponse, PaginationMeta
 
 router = APIRouter()
 
-@router.get("/", response_model=List[NotificationResponse])
+@router.get("/", response_model=PaginatedResponse[NotificationResponse])
 async def get_notifications(
     is_read: Optional[bool] = Query(None, description="Filter by read status"),
     type: Optional[str] = Query(None, description="Filter by notification type"),
     category: Optional[str] = Query(None, description="Filter by notification category"),
-    limit: int = Query(20, le=100, description="Number of notifications to retrieve"),
-    offset: int = Query(0, description="Offset for pagination"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Number of notifications per page"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -58,12 +59,18 @@ async def get_notifications(
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid notification category: {category}")
 
+        # Get total count
+        total = query.count()
+
+        # Apply pagination
+        offset = (page - 1) * page_size
         notifications = query.order_by(
             Notification.is_read.asc(),  # Unread first
             Notification.created_at.desc()  # Most recent first
-        ).offset(offset).limit(limit).all()
+        ).offset(offset).limit(page_size).all()
 
-        return [
+        # Build response
+        notification_responses = [
             NotificationResponse(
                 id=str(notification.id),
                 title=notification.title,
@@ -82,6 +89,19 @@ async def get_notifications(
             )
             for notification in notifications
         ]
+
+        # Calculate total pages
+        pages = (total + page_size - 1) // page_size
+
+        return PaginatedResponse(
+            data=notification_responses,
+            pagination=PaginationMeta(
+                total=total,
+                page=page,
+                page_size=page_size,
+                pages=pages
+            )
+        )
 
     except Exception as e:
         raise HTTPException(

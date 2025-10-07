@@ -632,3 +632,319 @@ async def update_client_permissions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update permissions: {str(e)}"
         )
+
+# Client Location Endpoints
+
+@router.get("/locations", response_model=List[ClientLocationResponse])
+async def list_locations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """List all locations for the organization"""
+
+    locations = db.query(ClientLocation).filter(
+        ClientLocation.organization_id == current_user.organization_id,
+        ClientLocation.is_active == True
+    ).order_by(ClientLocation.name).all()
+
+    return locations
+
+@router.post("/locations", response_model=ClientLocationResponse, status_code=status.HTTP_201_CREATED)
+async def create_location(
+    location_data: ClientLocationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("clients", "create"))
+):
+    """Create a new client location"""
+
+    location = ClientLocation(
+        organization_id=current_user.organization_id,
+        name=location_data.name,
+        address=location_data.address,
+        city=location_data.city,
+        state=location_data.state,
+        zip_code=location_data.zip_code,
+        phone=location_data.phone,
+        type=location_data.type,
+        capacity=location_data.capacity,
+        manager_id=location_data.manager_id,
+        is_active=True
+    )
+
+    db.add(location)
+    db.commit()
+    db.refresh(location)
+
+    return location
+
+@router.get("/locations/{location_id}", response_model=ClientLocationResponse)
+async def get_location(
+    location_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get location details by ID"""
+
+    location = db.query(ClientLocation).filter(
+        ClientLocation.id == location_id,
+        ClientLocation.organization_id == current_user.organization_id
+    ).first()
+
+    if not location:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Location not found"
+        )
+
+    return location
+
+@router.put("/locations/{location_id}", response_model=ClientLocationResponse)
+async def update_location(
+    location_id: UUID,
+    location_update: ClientLocationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("clients", "update"))
+):
+    """Update location information"""
+
+    location = db.query(ClientLocation).filter(
+        ClientLocation.id == location_id,
+        ClientLocation.organization_id == current_user.organization_id
+    ).first()
+
+    if not location:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Location not found"
+        )
+
+    # Update fields
+    update_data = location_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(location, field, value)
+
+    location.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(location)
+
+    return location
+
+@router.delete("/locations/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_location(
+    location_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("clients", "delete"))
+):
+    """Deactivate a location"""
+
+    location = db.query(ClientLocation).filter(
+        ClientLocation.id == location_id,
+        ClientLocation.organization_id == current_user.organization_id
+    ).first()
+
+    if not location:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Location not found"
+        )
+
+    # Soft delete by setting is_active to False
+    location.is_active = False
+    location.updated_at = datetime.utcnow()
+
+    db.commit()
+
+    return None
+
+# Client Location Assignment Endpoints
+
+@router.get("/{client_id}/assignments", response_model=List[ClientAssignmentResponse])
+async def list_client_assignments(
+    client_id: UUID,
+    current_only: bool = Query(False, description="Return only current assignments"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """List all location assignments for a client"""
+
+    # Verify client exists and belongs to organization
+    client = db.query(Client).filter(
+        Client.id == client_id,
+        Client.organization_id == current_user.organization_id
+    ).first()
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found"
+        )
+
+    query = db.query(ClientAssignment).options(
+        joinedload(ClientAssignment.location)
+    ).filter(ClientAssignment.client_id == client_id)
+
+    if current_only:
+        query = query.filter(ClientAssignment.is_current == True)
+
+    assignments = query.order_by(ClientAssignment.start_date.desc()).all()
+
+    return assignments
+
+@router.post("/{client_id}/assignments", response_model=ClientAssignmentResponse, status_code=status.HTTP_201_CREATED)
+async def assign_client_to_location(
+    client_id: UUID,
+    assignment_data: ClientAssignmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("clients", "update"))
+):
+    """Assign a client to a location"""
+
+    # Verify client exists and belongs to organization
+    client = db.query(Client).filter(
+        Client.id == client_id,
+        Client.organization_id == current_user.organization_id
+    ).first()
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found"
+        )
+
+    # Verify location exists and belongs to organization
+    location = db.query(ClientLocation).filter(
+        ClientLocation.id == assignment_data.location_id,
+        ClientLocation.organization_id == current_user.organization_id
+    ).first()
+
+    if not location:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Location not found"
+        )
+
+    # Check if location has capacity
+    if location.capacity:
+        current_count = db.query(ClientAssignment).filter(
+            ClientAssignment.location_id == location.id,
+            ClientAssignment.is_current == True
+        ).count()
+
+        if current_count >= location.capacity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Location {location.name} is at full capacity ({location.capacity})"
+            )
+
+    # End current assignment if exists
+    current_assignment = db.query(ClientAssignment).filter(
+        ClientAssignment.client_id == client_id,
+        ClientAssignment.is_current == True
+    ).first()
+
+    if current_assignment:
+        current_assignment.is_current = False
+        current_assignment.end_date = assignment_data.start_date
+
+    # Create new assignment
+    assignment = ClientAssignment(
+        client_id=client_id,
+        location_id=assignment_data.location_id,
+        room_number=assignment_data.room_number,
+        bed_number=assignment_data.bed_number,
+        start_date=assignment_data.start_date,
+        is_current=True
+    )
+
+    db.add(assignment)
+    db.commit()
+    db.refresh(assignment)
+
+    # Reload with location data
+    assignment = db.query(ClientAssignment).options(
+        joinedload(ClientAssignment.location)
+    ).filter(ClientAssignment.id == assignment.id).first()
+
+    return assignment
+
+@router.put("/{client_id}/assignments/{assignment_id}", response_model=ClientAssignmentResponse)
+async def update_client_assignment(
+    client_id: UUID,
+    assignment_id: UUID,
+    assignment_update: ClientAssignmentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("clients", "update"))
+):
+    """Update a client location assignment"""
+
+    assignment = db.query(ClientAssignment).join(Client).filter(
+        ClientAssignment.id == assignment_id,
+        ClientAssignment.client_id == client_id,
+        Client.organization_id == current_user.organization_id
+    ).first()
+
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found"
+        )
+
+    # Validate new location if being updated
+    if assignment_update.location_id and assignment_update.location_id != assignment.location_id:
+        location = db.query(ClientLocation).filter(
+            ClientLocation.id == assignment_update.location_id,
+            ClientLocation.organization_id == current_user.organization_id
+        ).first()
+
+        if not location:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Location not found"
+            )
+
+    # Update fields
+    update_data = assignment_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(assignment, field, value)
+
+    assignment.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(assignment)
+
+    # Reload with location data
+    assignment = db.query(ClientAssignment).options(
+        joinedload(ClientAssignment.location)
+    ).filter(ClientAssignment.id == assignment_id).first()
+
+    return assignment
+
+@router.delete("/{client_id}/assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def end_client_assignment(
+    client_id: UUID,
+    assignment_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("clients", "update"))
+):
+    """End a client location assignment"""
+
+    assignment = db.query(ClientAssignment).join(Client).filter(
+        ClientAssignment.id == assignment_id,
+        ClientAssignment.client_id == client_id,
+        Client.organization_id == current_user.organization_id
+    ).first()
+
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found"
+        )
+
+    assignment.is_current = False
+    assignment.end_date = datetime.utcnow().date()
+    assignment.updated_at = datetime.utcnow()
+
+    db.commit()
+
+    return None

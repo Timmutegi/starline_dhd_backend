@@ -17,12 +17,13 @@ from app.api.v1.roles import router as roles_router
 from app.api.v1.scheduling import router as scheduling_router
 from app.api.v1.scheduling import time_clock, appointments, availability, calendar
 from app.api.v1 import dashboard, documentation, notifications, tasks, admin, audit
+from app.api.v1 import training as training_api, notices as notices_api, reports, documents as documents_api
 
 # Import all models to ensure they're registered with SQLAlchemy before table creation
 from app.models import (
     user, client, staff, scheduling, task as task_model,
     vitals_log, shift_note, incident_report, notification as notification_model,
-    audit_log, meal_log, activity_log
+    audit_log, meal_log, activity_log, training, notice
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -202,6 +203,30 @@ app.include_router(
 app.include_router(
     audit.router,
     prefix=f"{settings.API_V1_STR}"
+)
+
+app.include_router(
+    training_api.router,
+    prefix=f"{settings.API_V1_STR}/training",
+    tags=["Training"]
+)
+
+app.include_router(
+    notices_api.router,
+    prefix=f"{settings.API_V1_STR}/notices",
+    tags=["Notices"]
+)
+
+app.include_router(
+    reports.router,
+    prefix=f"{settings.API_V1_STR}/reports",
+    tags=["Reports"]
+)
+
+app.include_router(
+    documents_api.router,
+    prefix=f"{settings.API_V1_STR}/documents",
+    tags=["Documents"]
 )
 
 if __name__ == "__main__":

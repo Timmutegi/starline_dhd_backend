@@ -6,6 +6,7 @@ import json
 import uuid
 import asyncio
 import hashlib
+import enum
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Union
 from sqlalchemy.orm import Session
@@ -21,6 +22,22 @@ from app.services.email_service import EmailService
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def serialize_for_json(obj: Any) -> Any:
+    """Recursively serialize objects to JSON-compatible types"""
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {k: serialize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [serialize_for_json(item) for item in obj]
+    elif isinstance(obj, enum.Enum):
+        return obj.value
+    else:
+        return obj
 
 
 class AuditService:
@@ -90,6 +107,10 @@ class AuditService:
             if self._should_mask_data(organization_id):
                 old_values = self._mask_sensitive_data(old_values)
                 new_values = self._mask_sensitive_data(new_values)
+
+            # Serialize UUID objects and other non-JSON types
+            old_values = serialize_for_json(old_values)
+            new_values = serialize_for_json(new_values)
 
             # Generate change summary
             changes_summary = self._generate_changes_summary(old_values, new_values, action)
@@ -537,13 +558,14 @@ class AuditService:
             # Get alert email addresses from settings
             alert_emails = settings.AUDIT_ALERT_EMAIL.split(',')
 
-            # Send PHI access alert email
+            # Send PHI access alert email asynchronously
             for email in alert_emails:
-                self.email_service.send_email(
-                    to_email=email.strip(),
-                    subject="PHI Access Alert - Starline",
-                    template_name="phi_access_alert.html",
-                    template_data={
+                asyncio.create_task(
+                    self.email_service.send_email(
+                        to=email.strip(),
+                        subject="PHI Access Alert - Starline",
+                        template_name="phi_access_alert.html",
+                        context={
                         "client_id": audit_log.resource_id,
                         "client_name": audit_log.resource_name or "Unknown",
                         "data_type": audit_log.resource_type,
@@ -560,7 +582,7 @@ class AuditService:
                         "phi_audit_url": f"{settings.FRONTEND_URL}/admin/audit/phi",
                         "frontend_url": settings.FRONTEND_URL,
                         "contact_email": settings.FROM_EMAIL
-                    }
+                    })
                 )
             logger.info(f"PHI access alert sent for user {audit_log.user_id} accessing resource {audit_log.resource_id}")
         except Exception as e:
@@ -573,11 +595,12 @@ class AuditService:
             alert_emails = settings.SECURITY_ALERT_EMAILS.split(',')
 
             for email in alert_emails:
-                self.email_service.send_email(
-                    to_email=email.strip(),
-                    subject="Failed Login Alert - Starline Security",
-                    template_name="failed_login_alert.html",
-                    template_data={
+                asyncio.create_task(
+                    self.email_service.send_email(
+                        to=email.strip(),
+                        subject="Failed Login Alert - Starline Security",
+                        template_name="failed_login_alert.html",
+                        context={
                         "target_email": audit_log.new_values.get("email", "Unknown") if audit_log.new_values else "Unknown",
                         "attempt_count": 5,  # Would be calculated from recent attempts
                         "time_window": 15,
@@ -595,7 +618,7 @@ class AuditService:
                         "unlock_account_url": f"{settings.FRONTEND_URL}/admin/users/unlock",
                         "frontend_url": settings.FRONTEND_URL,
                         "contact_email": settings.FROM_EMAIL
-                    }
+                    })
                 )
             logger.warning(f"Failed login alert sent for attempt from {audit_log.ip_address}")
         except Exception as e:
@@ -608,11 +631,12 @@ class AuditService:
             alert_emails = settings.SECURITY_ALERT_EMAILS.split(',')
 
             for email in alert_emails:
-                self.email_service.send_email(
-                    to_email=email.strip(),
-                    subject=f"SECURITY BREACH ALERT - {violation.severity.upper()} - Starline",
-                    template_name="security_breach_alert.html",
-                    template_data={
+                asyncio.create_task(
+                    self.email_service.send_email(
+                        to=email.strip(),
+                        subject=f"SECURITY BREACH ALERT - {violation.severity.upper()} - Starline",
+                        template_name="security_breach_alert.html",
+                        context={
                         "violation_type": violation.violation_type,
                         "severity": violation.severity.upper(),
                         "detected_at": violation.detected_at.isoformat(),
@@ -628,7 +652,7 @@ class AuditService:
                         "audit_dashboard_url": f"{settings.FRONTEND_URL}/admin/audit",
                         "frontend_url": settings.FRONTEND_URL,
                         "contact_email": settings.FROM_EMAIL
-                    }
+                    })
                 )
             logger.critical(f"Security breach alert sent: {violation.violation_type} - {violation.severity}")
         except Exception as e:
