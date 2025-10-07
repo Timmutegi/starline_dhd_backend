@@ -17,7 +17,7 @@ load_dotenv()
 
 # Configuration
 ENVIRONMENT = os.getenv("ENVIRONMENT", "DEV").upper()
-BASE_URL = "http://localhost:8000/api/v1" if ENVIRONMENT in ["DEV", "DEVELOPMENT"] else "https://dla74pfa6wcvm.cloudfront.net/api/v1"
+BASE_URL = "http://localhost:8000/api/v1" if ENVIRONMENT in ["DEV", "DEVELOPMENT"] else "http://localhost/api/v1"
 
 # Admin credentials from .env
 ADMIN_EMAIL = os.getenv("DEFAULT_ADMIN_EMAIL", "support@starline.com")
