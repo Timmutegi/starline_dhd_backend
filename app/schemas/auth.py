@@ -85,3 +85,10 @@ class OTPRequest(BaseModel):
 class OTPVerification(BaseModel):
     email: EmailStr
     otp: str = Field(..., min_length=6, max_length=6)
+
+class ProfileUpdateRequest(BaseModel):
+    timezone: Optional[str] = None
+    phone: Optional[str] = None
+
+    class Config:
+        from_attributes = True

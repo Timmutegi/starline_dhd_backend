@@ -416,14 +416,14 @@ class TimeClockEntryResponse(TimeClockEntryBase):
         from_attributes = True
 
 class ClockInRequest(BaseModel):
-    staff_id: UUID
+    staff_id: Optional[UUID] = None  # Optional - will use current user's staff record if not provided
     shift_id: Optional[UUID] = None
     geolocation: Optional[str] = None
     photo_url: Optional[str] = None
     notes: Optional[str] = None
 
 class ClockOutRequest(BaseModel):
-    staff_id: UUID
+    staff_id: Optional[UUID] = None  # Optional - will use current user's staff record if not provided
     shift_id: Optional[UUID] = None
     geolocation: Optional[str] = None
     photo_url: Optional[str] = None

@@ -51,6 +51,7 @@ class UserBase(BaseModel):
     phone: Optional[str] = Field(None, max_length=20)
     employee_id: Optional[str] = Field(None, max_length=50)
     hire_date: Optional[datetime] = None
+    timezone: Optional[str] = Field(None, max_length=50)
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=100)

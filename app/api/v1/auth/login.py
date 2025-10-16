@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, create_refresh_token, generate_otp, hash_otp
 from app.models.user import User, UserSession, AuthAuditLog, UserStatus, Role, Permission
-from app.schemas.auth import LoginRequest, LoginResponse, OTPVerification, PermissionInfo, RoleInfo
+from app.schemas.auth import LoginRequest, LoginResponse, OTPVerification, PermissionInfo, RoleInfo, MessageResponse, ProfileUpdateRequest
 from app.schemas.user import UserResponse
 from app.core.config import settings
 from app.services.email_service import EmailService
+from app.middleware.auth import get_current_user
+from pydantic import BaseModel
 import json
 
 router = APIRouter()
@@ -229,3 +231,56 @@ async def verify_email_otp(
     )
 
     return {"message": "Email verified successfully", "success": True}
+
+@router.get("/profile", response_model=UserResponse)
+async def get_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get the current user's profile with complete information."""
+    # Refresh user data with relationships loaded
+    user = db.query(User).options(
+        joinedload(User.role).joinedload(Role.permissions),
+        joinedload(User.organization)
+    ).filter(User.id == current_user.id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    return UserResponse.model_validate(user)
+
+@router.put("/profile", response_model=UserResponse)
+async def update_profile(
+    profile_update: ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update the current user's profile."""
+    user = db.query(User).filter(User.id == current_user.id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Update allowed fields
+    update_data = profile_update.model_dump(exclude_unset=True)
+
+    for field, value in update_data.items():
+        if hasattr(user, field):
+            setattr(user, field, value)
+
+    user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # Refresh with relationships loaded
+    user = db.query(User).options(
+        joinedload(User.role).joinedload(Role.permissions),
+        joinedload(User.organization)
+    ).filter(User.id == current_user.id).first()
+
+    return UserResponse.model_validate(user)

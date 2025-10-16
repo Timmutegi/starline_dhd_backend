@@ -27,12 +27,84 @@ from app.schemas.documentation import (
 )
 from app.models.vitals_log import VitalsLog
 from app.models.shift_note import ShiftNote
-from app.models.incident_report import IncidentReport
+from app.models.incident_report import IncidentReport, IncidentTypeEnum, IncidentSeverityEnum, IncidentStatusEnum
 from app.models.meal_log import MealLog
 from app.models.activity_log import ActivityLog
+from app.models.staff import Staff, StaffAssignment
+from app.models.scheduling import Shift, ShiftStatus
 from app.core.config import settings
+import pytz
+from datetime import time as time_type
 
 router = APIRouter()
+
+# Helper function to verify client assignment
+def verify_client_assignment(db: Session, staff_user_id: str, client_id: str, organization_id: str) -> bool:
+    """
+    Verify that a client is assigned to the staff member.
+    Returns True if the client is assigned, False otherwise.
+    """
+    # Get staff record from user_id
+    staff = db.query(Staff).filter(
+        Staff.user_id == staff_user_id,
+        Staff.organization_id == organization_id
+    ).first()
+
+    if not staff:
+        return False
+
+    # Check if there's an active assignment for this staff and client
+    assignment = db.query(StaffAssignment).filter(
+        and_(
+            StaffAssignment.staff_id == staff.id,
+            StaffAssignment.client_id == client_id,
+            StaffAssignment.is_active == True
+        )
+    ).first()
+
+    return assignment is not None
+
+
+# Helper function to verify documentation is created during active shift
+def verify_shift_time(db: Session, staff_user_id: str, client_id: str, organization_id: str, user_timezone: str = "UTC") -> bool:
+    """
+    Verify that documentation is being created during an active shift for the client.
+    Returns True if there's an active shift for this staff-client pair at the current time.
+    """
+    # Get staff record from user_id
+    staff = db.query(Staff).filter(
+        Staff.user_id == staff_user_id,
+        Staff.organization_id == organization_id
+    ).first()
+
+    if not staff:
+        return False
+
+    # Get user's timezone
+    try:
+        tz = pytz.timezone(user_timezone)
+    except:
+        tz = pytz.UTC
+
+    # Get current time in user's timezone
+    now_utc = datetime.utcnow()
+    now_user_tz = pytz.UTC.localize(now_utc).astimezone(tz)
+    current_date = now_user_tz.date()
+    current_time = now_user_tz.time()
+
+    # Query for active shift at current time
+    active_shift = db.query(Shift).filter(
+        and_(
+            Shift.staff_id == staff.id,
+            Shift.client_id == client_id,
+            Shift.shift_date == current_date,
+            Shift.start_time <= current_time,
+            Shift.end_time >= current_time,
+            Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.CONFIRMED, ShiftStatus.IN_PROGRESS])
+        )
+    ).first()
+
+    return active_shift is not None
 
 # Vitals Logging Endpoints
 @router.post("/vitals", response_model=VitalsLogResponse)
@@ -55,6 +127,21 @@ async def create_vitals_log(
 
         if not client:
             raise HTTPException(status_code=404, detail="Client not found")
+
+        # Verify client is assigned to the staff member
+        if not verify_client_assignment(db, current_user.id, vitals_data.client_id, current_user.organization_id):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients assigned to you"
+            )
+
+        # Verify documentation is being created during an active shift
+        user_tz = current_user.timezone or (current_user.organization.timezone if current_user.organization else "UTC")
+        if not verify_shift_time(db, current_user.id, vitals_data.client_id, current_user.organization_id, user_tz):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients during your scheduled shift time"
+            )
 
         # Create vitals log entry
         vitals_log = VitalsLog(
@@ -103,7 +190,7 @@ async def create_vitals_log(
             detail=f"Failed to create vitals log: {str(e)}"
         )
 
-@router.get("/vitals", response_model=List[VitalsLogResponse])
+@router.get("/vitals")
 async def get_vitals_logs(
     client_id: Optional[str] = None,
     date_from: Optional[date] = None,
@@ -115,6 +202,7 @@ async def get_vitals_logs(
 ):
     """
     Get vitals logs with optional filtering
+    Returns paginated response with data array
     """
     try:
         query = db.query(VitalsLog).filter(
@@ -130,6 +218,9 @@ async def get_vitals_logs(
         if date_to:
             query = query.filter(func.date(VitalsLog.recorded_at) <= date_to)
 
+        # Get total count before pagination
+        total = query.count()
+
         vitals_logs = query.order_by(VitalsLog.recorded_at.desc()).offset(offset).limit(limit).all()
 
         results = []
@@ -137,25 +228,33 @@ async def get_vitals_logs(
             client = db.query(Client).filter(Client.id == log.client_id).first()
             staff = db.query(User).filter(User.id == log.staff_id).first()
 
-            results.append(VitalsLogResponse(
-                id=str(log.id),
-                client_id=str(log.client_id),
-                client_name=f"{client.first_name} {client.last_name}" if client else "Unknown",
-                staff_id=str(log.staff_id),
-                staff_name=f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
-                temperature=log.temperature,
-                blood_pressure_systolic=log.blood_pressure_systolic,
-                blood_pressure_diastolic=log.blood_pressure_diastolic,
-                blood_sugar=log.blood_sugar,
-                weight=log.weight,
-                heart_rate=log.heart_rate,
-                oxygen_saturation=log.oxygen_saturation,
-                notes=log.notes,
-                recorded_at=log.recorded_at,
-                created_at=log.created_at
-            ))
+            results.append({
+                "id": str(log.id),
+                "client_id": str(log.client_id),
+                "client_name": f"{client.first_name} {client.last_name}" if client else "Unknown",
+                "staff_id": str(log.staff_id),
+                "staff_name": f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
+                "temperature": log.temperature,
+                "blood_pressure_systolic": log.blood_pressure_systolic,
+                "blood_pressure_diastolic": log.blood_pressure_diastolic,
+                "blood_sugar": log.blood_sugar,
+                "weight": log.weight,
+                "heart_rate": log.heart_rate,
+                "oxygen_saturation": log.oxygen_saturation,
+                "notes": log.notes,
+                "recorded_at": log.recorded_at,
+                "created_at": log.created_at
+            })
 
-        return results
+        return {
+            "data": results,
+            "pagination": {
+                "total": total,
+                "page": (offset // limit) + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "pages": (total + limit - 1) // limit if limit > 0 else 1
+            }
+        }
 
     except Exception as e:
         raise HTTPException(
@@ -184,6 +283,21 @@ async def create_shift_note(
 
         if not client:
             raise HTTPException(status_code=404, detail="Client not found")
+
+        # Verify client is assigned to the staff member
+        if not verify_client_assignment(db, current_user.id, shift_note_data.client_id, current_user.organization_id):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients assigned to you"
+            )
+
+        # Verify documentation is being created during an active shift
+        user_tz = current_user.timezone or (current_user.organization.timezone if current_user.organization else "UTC")
+        if not verify_shift_time(db, current_user.id, shift_note_data.client_id, current_user.organization_id, user_tz):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients during your scheduled shift time"
+            )
 
         # Create shift note
         shift_note = ShiftNote(
@@ -226,7 +340,7 @@ async def create_shift_note(
             detail=f"Failed to create shift note: {str(e)}"
         )
 
-@router.get("/shift-notes", response_model=List[ShiftNoteResponse])
+@router.get("/shift-notes")
 async def get_shift_notes(
     client_id: Optional[str] = None,
     date_from: Optional[date] = None,
@@ -238,6 +352,7 @@ async def get_shift_notes(
 ):
     """
     Get shift notes with optional filtering
+    Returns paginated response with data array
     """
     try:
         query = db.query(ShiftNote).filter(
@@ -253,6 +368,9 @@ async def get_shift_notes(
         if date_to:
             query = query.filter(ShiftNote.shift_date <= date_to)
 
+        # Get total count before pagination
+        total = query.count()
+
         shift_notes = query.order_by(ShiftNote.shift_date.desc()).offset(offset).limit(limit).all()
 
         results = []
@@ -260,22 +378,30 @@ async def get_shift_notes(
             client = db.query(Client).filter(Client.id == note.client_id).first()
             staff = db.query(User).filter(User.id == note.staff_id).first()
 
-            results.append(ShiftNoteResponse(
-                id=str(note.id),
-                client_id=str(note.client_id),
-                client_name=f"{client.first_name} {client.last_name}" if client else "Unknown",
-                staff_id=str(note.staff_id),
-                staff_name=f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
-                shift_date=note.shift_date,
-                shift_time=note.shift_time,
-                narrative=note.narrative,
-                challenges_faced=note.challenges_faced,
-                support_required=note.support_required,
-                observations=note.observations,
-                created_at=note.created_at
-            ))
+            results.append({
+                "id": str(note.id),
+                "client_id": str(note.client_id),
+                "client_name": f"{client.first_name} {client.last_name}" if client else "Unknown",
+                "staff_id": str(note.staff_id),
+                "staff_name": f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
+                "shift_date": note.shift_date,
+                "shift_time": note.shift_time,
+                "narrative": note.narrative,
+                "challenges_faced": note.challenges_faced,
+                "support_required": note.support_required,
+                "observations": note.observations,
+                "created_at": note.created_at
+            })
 
-        return results
+        return {
+            "data": results,
+            "pagination": {
+                "total": total,
+                "page": (offset // limit) + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "pages": (total + limit - 1) // limit if limit > 0 else 1
+            }
+        }
 
     except Exception as e:
         raise HTTPException(
@@ -315,6 +441,21 @@ async def create_incident_report(
         if not client:
             raise HTTPException(status_code=404, detail="Client not found")
 
+        # Verify client is assigned to the staff member
+        if not verify_client_assignment(db, current_user.id, client_id, current_user.organization_id):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients assigned to you"
+            )
+
+        # Verify documentation is being created during an active shift
+        user_tz = current_user.timezone or (current_user.organization.timezone if current_user.organization else "UTC")
+        if not verify_shift_time(db, current_user.id, client_id, current_user.organization_id, user_tz):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients during your scheduled shift time"
+            )
+
         # Handle file uploads
         uploaded_files = []
         if files and files[0].filename:  # Check if actual files were uploaded
@@ -338,23 +479,30 @@ async def create_incident_report(
                         "size": len(content)
                     })
 
+        # Convert string to enum values
+        try:
+            incident_type_enum = IncidentTypeEnum[incident_type.upper().replace(' ', '_')]
+            severity_enum = IncidentSeverityEnum[severity.upper()]
+        except KeyError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid enum value: {str(e)}")
+
         # Create incident report
         incident = IncidentReport(
             id=uuid.uuid4(),
             client_id=client_id,
             staff_id=current_user.id,
             organization_id=current_user.organization_id,
-            incident_type=incident_type,
+            incident_type=incident_type_enum,
             description=description,
             action_taken=action_taken,
-            severity=severity,
+            severity=severity_enum,
             incident_date=incident_date,
             incident_time=incident_time,
             location=location,
             witnesses=witnesses,
             follow_up_required=follow_up_required,
             attached_files=uploaded_files,
-            status="pending",
+            status=IncidentStatusEnum.PENDING,
             created_at=datetime.utcnow()
         )
 
@@ -384,12 +532,17 @@ async def create_incident_report(
 
     except Exception as e:
         db.rollback()
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error creating incident report: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Failed to create incident report: {str(e)}"
         )
 
-@router.get("/incidents", response_model=List[IncidentReportResponse])
+@router.get("/incidents")
 async def get_incident_reports(
     client_id: Optional[str] = None,
     severity: Optional[str] = None,
@@ -403,6 +556,7 @@ async def get_incident_reports(
 ):
     """
     Get incident reports with optional filtering
+    Returns paginated response with data array
     """
     try:
         query = db.query(IncidentReport).filter(
@@ -424,6 +578,9 @@ async def get_incident_reports(
         if date_to:
             query = query.filter(IncidentReport.incident_date <= date_to)
 
+        # Get total count before pagination
+        total = query.count()
+
         incidents = query.order_by(IncidentReport.incident_date.desc()).offset(offset).limit(limit).all()
 
         results = []
@@ -431,27 +588,35 @@ async def get_incident_reports(
             client = db.query(Client).filter(Client.id == incident.client_id).first()
             staff = db.query(User).filter(User.id == incident.staff_id).first()
 
-            results.append(IncidentReportResponse(
-                id=str(incident.id),
-                client_id=str(incident.client_id),
-                client_name=f"{client.first_name} {client.last_name}" if client else "Unknown",
-                staff_id=str(incident.staff_id),
-                staff_name=f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
-                incident_type=incident.incident_type,
-                description=incident.description,
-                action_taken=incident.action_taken,
-                severity=incident.severity,
-                incident_date=incident.incident_date,
-                incident_time=incident.incident_time,
-                location=incident.location,
-                witnesses=incident.witnesses,
-                follow_up_required=incident.follow_up_required,
-                attached_files=incident.attached_files,
-                status=incident.status,
-                created_at=incident.created_at
-            ))
+            results.append({
+                "id": str(incident.id),
+                "client_id": str(incident.client_id),
+                "client_name": f"{client.first_name} {client.last_name}" if client else "Unknown",
+                "staff_id": str(incident.staff_id),
+                "staff_name": f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
+                "incident_type": incident.incident_type.value if hasattr(incident.incident_type, 'value') else incident.incident_type,
+                "description": incident.description,
+                "action_taken": incident.action_taken,
+                "severity": incident.severity.value if hasattr(incident.severity, 'value') else incident.severity,
+                "incident_date": incident.incident_date,
+                "incident_time": incident.incident_time,
+                "location": incident.location,
+                "witnesses": incident.witnesses,
+                "follow_up_required": incident.follow_up_required,
+                "attached_files": incident.attached_files,
+                "status": incident.status.value if hasattr(incident.status, 'value') else incident.status,
+                "created_at": incident.created_at
+            })
 
-        return results
+        return {
+            "data": results,
+            "pagination": {
+                "total": total,
+                "page": (offset // limit) + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "pages": (total + limit - 1) // limit if limit > 0 else 1
+            }
+        }
 
     except Exception as e:
         raise HTTPException(
@@ -528,6 +693,21 @@ async def create_meal_log(
         if not client:
             raise HTTPException(status_code=404, detail="Client not found")
 
+        # Verify client is assigned to the staff member
+        if not verify_client_assignment(db, current_user.id, meal_data.client_id, current_user.organization_id):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients assigned to you"
+            )
+
+        # Verify documentation is being created during an active shift
+        user_tz = current_user.timezone or (current_user.organization.timezone if current_user.organization else "UTC")
+        if not verify_shift_time(db, current_user.id, meal_data.client_id, current_user.organization_id, user_tz):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients during your scheduled shift time"
+            )
+
         # Create meal log entry
         meal_log = MealLog(
             id=uuid.uuid4(),
@@ -603,7 +783,7 @@ async def create_meal_log(
             detail=f"Failed to create meal log: {str(e)}"
         )
 
-@router.get("/meals", response_model=List[MealLogResponse])
+@router.get("/meals")
 async def get_meal_logs(
     client_id: Optional[str] = None,
     meal_type: Optional[str] = None,
@@ -616,6 +796,7 @@ async def get_meal_logs(
 ):
     """
     Get meal logs with optional filtering
+    Returns paginated response with data array
     """
     try:
         query = db.query(MealLog).filter(
@@ -634,6 +815,9 @@ async def get_meal_logs(
         if date_to:
             query = query.filter(func.date(MealLog.meal_date) <= date_to)
 
+        # Get total count before pagination
+        total = query.count()
+
         meal_logs = query.order_by(MealLog.meal_date.desc()).offset(offset).limit(limit).all()
 
         results = []
@@ -641,40 +825,48 @@ async def get_meal_logs(
             client = db.query(Client).filter(Client.id == log.client_id).first()
             staff = db.query(User).filter(User.id == log.staff_id).first()
 
-            results.append(MealLogResponse(
-                id=str(log.id),
-                client_id=str(log.client_id),
-                client_name=f"{client.first_name} {client.last_name}" if client else "Unknown",
-                staff_id=str(log.staff_id) if log.staff_id else "",
-                staff_name=f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
-                meal_type=log.meal_type.value,
-                meal_date=log.meal_date,
-                meal_time=log.meal_time,
-                food_items=log.food_items,
-                intake_amount=log.intake_amount.value if log.intake_amount else None,
-                percentage_consumed=log.percentage_consumed,
-                calories=log.calories,
-                protein_grams=log.protein_grams,
-                carbs_grams=log.carbs_grams,
-                fat_grams=log.fat_grams,
-                water_intake_ml=log.water_intake_ml,
-                other_fluids=log.other_fluids,
-                appetite_level=log.appetite_level,
-                dietary_preferences_followed=log.dietary_preferences_followed,
-                dietary_restrictions_followed=log.dietary_restrictions_followed,
-                assistance_required=log.assistance_required,
-                assistance_type=log.assistance_type,
-                refusals=log.refusals,
-                allergic_reactions=log.allergic_reactions,
-                choking_incidents=log.choking_incidents,
-                notes=log.notes,
-                recommendations=log.recommendations,
-                photo_urls=log.photo_urls,
-                created_at=log.created_at,
-                updated_at=log.updated_at
-            ))
+            results.append({
+                "id": str(log.id),
+                "client_id": str(log.client_id),
+                "client_name": f"{client.first_name} {client.last_name}" if client else "Unknown",
+                "staff_id": str(log.staff_id) if log.staff_id else "",
+                "staff_name": f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
+                "meal_type": log.meal_type.value,
+                "meal_date": log.meal_date,
+                "meal_time": log.meal_time,
+                "food_items": log.food_items,
+                "intake_amount": log.intake_amount.value if log.intake_amount else None,
+                "percentage_consumed": log.percentage_consumed,
+                "calories": log.calories,
+                "protein_grams": log.protein_grams,
+                "carbs_grams": log.carbs_grams,
+                "fat_grams": log.fat_grams,
+                "water_intake_ml": log.water_intake_ml,
+                "other_fluids": log.other_fluids,
+                "appetite_level": log.appetite_level,
+                "dietary_preferences_followed": log.dietary_preferences_followed,
+                "dietary_restrictions_followed": log.dietary_restrictions_followed,
+                "assistance_required": log.assistance_required,
+                "assistance_type": log.assistance_type,
+                "refusals": log.refusals,
+                "allergic_reactions": log.allergic_reactions,
+                "choking_incidents": log.choking_incidents,
+                "notes": log.notes,
+                "recommendations": log.recommendations,
+                "photo_urls": log.photo_urls,
+                "created_at": log.created_at,
+                "updated_at": log.updated_at
+            })
 
-        return results
+        return {
+            "data": results,
+            "pagination": {
+                "total": total,
+                "page": (offset // limit) + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "pages": (total + limit - 1) // limit if limit > 0 else 1
+            }
+        }
 
     except Exception as e:
         raise HTTPException(
@@ -874,6 +1066,21 @@ async def create_activity_log(
         if not client:
             raise HTTPException(status_code=404, detail="Client not found")
 
+        # Verify client is assigned to the staff member
+        if not verify_client_assignment(db, current_user.id, activity_data.client_id, current_user.organization_id):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients assigned to you"
+            )
+
+        # Verify documentation is being created during an active shift
+        user_tz = current_user.timezone or (current_user.organization.timezone if current_user.organization else "UTC")
+        if not verify_shift_time(db, current_user.id, activity_data.client_id, current_user.organization_id, user_tz):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients during your scheduled shift time"
+            )
+
         # Create activity log
         activity_log = ActivityLog(
             id=uuid.uuid4(),
@@ -987,16 +1194,19 @@ async def create_activity_log(
         )
 
 
-@router.get("/activities", response_model=List[ActivityLogResponse])
+@router.get("/activities")
 async def get_activity_logs(
     client_id: Optional[str] = None,
     activity_date: Optional[date] = None,
     activity_type: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Get activity logs with optional filtering by client, date, or type
+    Returns paginated response with data array
     """
     try:
         query = db.query(ActivityLog).filter(
@@ -1012,7 +1222,10 @@ async def get_activity_logs(
         if activity_type:
             query = query.filter(ActivityLog.activity_type == activity_type)
 
-        activity_logs = query.order_by(ActivityLog.activity_date.desc()).all()
+        # Get total count before pagination
+        total = query.count()
+
+        activity_logs = query.order_by(ActivityLog.activity_date.desc()).offset(offset).limit(limit).all()
 
         # Build response with client and staff names
         response_list = []
@@ -1027,57 +1240,65 @@ async def get_activity_logs(
                 staff = db.query(User).filter(User.id == log.staff_id).first()
                 staff_name = f"{staff.first_name} {staff.last_name}" if staff else "Unknown Staff"
 
-            response_list.append(ActivityLogResponse(
-                id=str(log.id),
-                client_id=str(log.client_id),
-                client_name=client_name,
-                staff_id=str(log.staff_id) if log.staff_id else None,
-                staff_name=staff_name,
-                organization_id=str(log.organization_id),
-                activity_type=log.activity_type,
-                activity_name=log.activity_name,
-                activity_description=log.activity_description,
-                activity_date=log.activity_date,
-                start_time=log.start_time,
-                end_time=log.end_time,
-                duration_minutes=log.duration_minutes,
-                location=log.location,
-                location_type=log.location_type,
-                participation_level=log.participation_level,
-                independence_level=log.independence_level,
-                assistance_required=log.assistance_required,
-                assistance_details=log.assistance_details,
-                participants=log.participants,
-                peer_interaction=log.peer_interaction,
-                peer_interaction_quality=log.peer_interaction_quality,
-                mood_before=log.mood_before,
-                mood_during=log.mood_during,
-                mood_after=log.mood_after,
-                behavior_observations=log.behavior_observations,
-                challenging_behaviors=log.challenging_behaviors,
-                skills_practiced=log.skills_practiced,
-                skills_progress=log.skills_progress,
-                goals_addressed=log.goals_addressed,
-                engagement_level=log.engagement_level,
-                enjoyment_level=log.enjoyment_level,
-                focus_attention=log.focus_attention,
-                physical_complaints=log.physical_complaints,
-                fatigue_level=log.fatigue_level,
-                injuries_incidents=log.injuries_incidents,
-                activity_completed=log.activity_completed,
-                completion_percentage=log.completion_percentage,
-                achievements=log.achievements,
-                challenges_faced=log.challenges_faced,
-                staff_notes=log.staff_notes,
-                recommendations=log.recommendations,
-                follow_up_needed=log.follow_up_needed,
-                photo_urls=log.photo_urls,
-                video_urls=log.video_urls,
-                created_at=log.created_at,
-                updated_at=log.updated_at
-            ))
+            response_list.append({
+                "id": str(log.id),
+                "client_id": str(log.client_id),
+                "client_name": client_name,
+                "staff_id": str(log.staff_id) if log.staff_id else None,
+                "staff_name": staff_name,
+                "organization_id": str(log.organization_id),
+                "activity_type": log.activity_type,
+                "activity_name": log.activity_name,
+                "activity_description": log.activity_description,
+                "activity_date": log.activity_date,
+                "start_time": log.start_time,
+                "end_time": log.end_time,
+                "duration_minutes": log.duration_minutes,
+                "location": log.location,
+                "location_type": log.location_type,
+                "participation_level": log.participation_level,
+                "independence_level": log.independence_level,
+                "assistance_required": log.assistance_required,
+                "assistance_details": log.assistance_details,
+                "participants": log.participants,
+                "peer_interaction": log.peer_interaction,
+                "peer_interaction_quality": log.peer_interaction_quality,
+                "mood_before": log.mood_before,
+                "mood_during": log.mood_during,
+                "mood_after": log.mood_after,
+                "behavior_observations": log.behavior_observations,
+                "challenging_behaviors": log.challenging_behaviors,
+                "skills_practiced": log.skills_practiced,
+                "skills_progress": log.skills_progress,
+                "goals_addressed": log.goals_addressed,
+                "engagement_level": log.engagement_level,
+                "enjoyment_level": log.enjoyment_level,
+                "focus_attention": log.focus_attention,
+                "physical_complaints": log.physical_complaints,
+                "fatigue_level": log.fatigue_level,
+                "injuries_incidents": log.injuries_incidents,
+                "activity_completed": log.activity_completed,
+                "completion_percentage": log.completion_percentage,
+                "achievements": log.achievements,
+                "challenges_faced": log.challenges_faced,
+                "staff_notes": log.staff_notes,
+                "recommendations": log.recommendations,
+                "follow_up_needed": log.follow_up_needed,
+                "photo_urls": log.photo_urls,
+                "video_urls": log.video_urls,
+                "created_at": log.created_at,
+                "updated_at": log.updated_at
+            })
 
-        return response_list
+        return {
+            "data": response_list,
+            "pagination": {
+                "total": total,
+                "page": (offset // limit) + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "pages": (total + limit - 1) // limit if limit > 0 else 1
+            }
+        }
 
     except Exception as e:
         raise HTTPException(

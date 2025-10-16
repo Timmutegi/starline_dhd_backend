@@ -3,9 +3,10 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, time, date
 import secrets
 import string
+import pytz
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_permission
@@ -15,6 +16,8 @@ from app.models.client import (
     Client, ClientContact, ClientLocation, ClientAssignment,
     CarePlan, ClientNote, ClientMedication, ClientInsurance
 )
+from app.models.staff import Staff
+from app.models.scheduling import Shift, ShiftStatus
 from app.schemas.client import (
     ClientCreate, ClientUpdate, ClientResponse, ClientListResponse,
     ClientCreateResponse,
@@ -948,3 +951,77 @@ async def end_client_assignment(
     db.commit()
 
     return None
+
+# Get clients scheduled for current time
+@router.get("/me/scheduled", response_model=List[ClientResponse])
+async def get_currently_scheduled_clients(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get clients that are currently scheduled for the logged-in DSP based on active shifts.
+    Uses the user's timezone to determine current time.
+    """
+
+    # Get staff record for current user
+    staff = db.query(Staff).filter(
+        Staff.user_id == current_user.id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        return []
+
+    # Get user's timezone (use organization timezone if user timezone not set)
+    user_timezone = current_user.timezone or (
+        current_user.organization.timezone if current_user.organization else "UTC"
+    )
+
+    try:
+        tz = pytz.timezone(user_timezone)
+    except:
+        tz = pytz.UTC
+
+    # Get current time in user's timezone
+    now_utc = datetime.utcnow()
+    now_user_tz = pytz.UTC.localize(now_utc).astimezone(tz)
+    current_date = now_user_tz.date()
+    current_time = now_user_tz.time()
+
+    # Query shifts for today that are currently in progress
+    active_shifts = db.query(Shift).filter(
+        and_(
+            Shift.staff_id == staff.id,
+            Shift.shift_date == current_date,
+            Shift.start_time <= current_time,
+            Shift.end_time >= current_time,
+            Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.CONFIRMED, ShiftStatus.IN_PROGRESS]),
+            Shift.client_id != None  # Only shifts with assigned clients
+        )
+    ).all()
+
+    # Get unique client IDs from active shifts
+    client_ids = list(set([shift.client_id for shift in active_shifts if shift.client_id]))
+
+    if not client_ids:
+        return []
+
+    # Query clients
+    clients = db.query(Client).filter(
+        and_(
+            Client.id.in_(client_ids),
+            Client.organization_id == current_user.organization_id,
+            Client.status == "active"
+        )
+    ).all()
+
+    # Build response
+    client_responses = []
+    for client in clients:
+        response = ClientResponse.model_validate(client)
+        if client.user:
+            response.email = client.user.email
+        response.full_name = client.full_name
+        client_responses.append(response)
+
+    return client_responses

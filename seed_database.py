@@ -971,64 +971,6 @@ def main():
             "role_id": support_staff_role_id,
             "use_custom_permissions": False
         },
-        {
-            "first_name": "David",
-            "last_name": "Mateo",
-            "email": "mateo@kaziflex.com",
-            "phone": "+1-555-0102",
-            "employee_id": "SP002",
-            "hire_date": str(date.today() - timedelta(days=545)),
-            "department": "Direct Care",
-            "job_title": "Care Provider",
-            "pay_type": "hourly",
-            "hourly_rate": "20.00",
-            "role_id": support_staff_role_id,
-            "use_custom_permissions": False
-        },
-        {
-            "first_name": "Mat",
-            "last_name": "Anderson",
-            "email": "mat@kaziflex.com",
-            "phone": "+1-555-0103",
-            "employee_id": "SP003",
-            "hire_date": str(date.today() - timedelta(days=365)),
-            "department": "Direct Care",
-            "job_title": "Care Provider",
-            "pay_type": "hourly",
-            "hourly_rate": "19.50",
-            "role_id": support_staff_role_id,
-            "use_custom_permissions": False
-        },
-        {
-            "first_name": "Alfred",
-            "last_name": "Taylor",
-            "email": "alfred@kaziflex.com",
-            "phone": "+1-555-0104",
-            "employee_id": "SP004",
-            "hire_date": str(date.today() - timedelta(days=180)),
-            "department": "Direct Care",
-            "job_title": "Care Provider",
-            "preferred_name": "Rob",
-            "pay_type": "hourly",
-            "hourly_rate": "18.00",
-            "role_id": support_staff_role_id,
-            "use_custom_permissions": False
-        },
-        {
-            "first_name": "Otto",
-            "last_name": "Brown",
-            "email": "otto@kaziflex.com",
-            "phone": "+1-555-0105",
-            "employee_id": "SP005",
-            "hire_date": str(date.today() - timedelta(days=90)),
-            "department": "Direct Care",
-            "job_title": "Care Provider",
-            "preferred_name": "Jen",
-            "pay_type": "hourly",
-            "hourly_rate": "17.50",
-            "role_id": support_staff_role_id,
-            "use_custom_permissions": False
-        }
     ]
 
     staff_members = []
@@ -1366,16 +1308,26 @@ def main():
             schedules.append(schedule)
             print_success(f"Created schedule for {tim_staff['full_name']}")
 
-            # Today's shift (active)
+            # Today's shift (active) - Set times to span current time
+            from datetime import datetime as dt
+            current_time = dt.now().time()
+            current_hour = current_time.hour
+
+            # Set start time to 2 hours before current time (or 8 AM if before 10 AM)
+            start_hour = max(8, current_hour - 2)
+            # Set end time to 6 hours after current time (or 7 PM at the latest)
+            end_hour = min(19, current_hour + 6)
+
             today_shift_data = {
                 "schedule_id": schedule["id"],
                 "staff_id": tim_staff["id"],
                 "client_id": clients[0]["id"],
                 "shift_date": str(date.today()),
-                "start_time": "08:00:00",
-                "end_time": "16:00:00",
+                "start_time": f"{start_hour:02d}:00:00",
+                "end_time": f"{end_hour:02d}:00:00",
                 "shift_type": "regular",
-                "status": "scheduled"
+                "status": "scheduled",
+                "required_documentation": ["vitals_log", "shift_note", "meal_log"]  # Required docs for clock-out
             }
             today_shift = create_shift(token, today_shift_data)
             if today_shift:
@@ -1406,7 +1358,8 @@ def main():
                     "start_time": "08:00:00",
                     "end_time": "16:00:00",
                     "shift_type": "regular",
-                    "status": "scheduled" if day_offset > 0 else "completed"
+                    "status": "scheduled" if day_offset > 0 else "completed",
+                    "required_documentation": ["vitals_log", "shift_note", "meal_log"]  # Required docs for clock-out
                 }
                 shift = create_shift(token, shift_data)
                 if shift:

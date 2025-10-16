@@ -171,6 +171,7 @@ class Shift(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     schedule_id = Column(UUID(as_uuid=True), ForeignKey("schedules.id", ondelete="CASCADE"), nullable=False)
     staff_id = Column(UUID(as_uuid=True), ForeignKey("staff.id", ondelete="CASCADE"), nullable=False)
+    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=True)  # Primary client for this shift
     location_id = Column(UUID(as_uuid=True), nullable=True)  # Future location table
     shift_date = Column(Date, nullable=False)
     start_time = Column(Time, nullable=False)
@@ -182,12 +183,14 @@ class Shift(Base):
     status = Column(Enum(ShiftStatus), default=ShiftStatus.SCHEDULED, nullable=False)
     shift_type = Column(Enum(ShiftType), default=ShiftType.REGULAR, nullable=False)
     is_mandatory = Column(Boolean, default=False)
+    required_documentation = Column(ARRAY(String), nullable=True, default=["shift_note"])  # e.g., ["vitals_log", "shift_note", "meal_log", "incident_report"]
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     schedule = relationship("Schedule", back_populates="shifts")
-    staff = relationship("Staff")
+    staff = relationship("Staff", foreign_keys=[staff_id])
+    client = relationship("Client", foreign_keys=[client_id])
     assignments = relationship("ShiftAssignment", back_populates="shift", cascade="all, delete-orphan")
     time_entries = relationship("TimeClockEntry", back_populates="shift", cascade="all, delete-orphan")
 

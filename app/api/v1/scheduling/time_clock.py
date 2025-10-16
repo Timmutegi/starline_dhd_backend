@@ -32,28 +32,42 @@ async def clock_in(
 ):
     """Clock in for a shift."""
 
-    # Validate staff
-    staff = db.query(Staff).filter(
-        Staff.id == clock_in_data.staff_id,
-        Staff.organization_id == current_user.organization_id
-    ).first()
-
-    if not staff:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Staff member not found"
-        )
+    # Get staff_id - use provided value or derive from current user
+    staff_id = clock_in_data.staff_id
+    if not staff_id:
+        # Get staff record for current user
+        staff = db.query(Staff).filter(
+            Staff.user_id == current_user.id,
+            Staff.organization_id == current_user.organization_id
+        ).first()
+        if not staff:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No staff record found for current user"
+            )
+        staff_id = staff.id
+    else:
+        # Validate provided staff_id
+        staff = db.query(Staff).filter(
+            Staff.id == staff_id,
+            Staff.organization_id == current_user.organization_id
+        ).first()
+        if not staff:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Staff member not found"
+            )
 
     # Check for existing clock-in without clock-out
     existing_entry = db.query(TimeClockEntry).filter(
-        TimeClockEntry.staff_id == clock_in_data.staff_id,
+        TimeClockEntry.staff_id == staff_id,
         TimeClockEntry.entry_type == TimeEntryType.CLOCK_IN
     ).order_by(TimeClockEntry.entry_datetime.desc()).first()
 
     if existing_entry:
         # Check if there's a corresponding clock-out
         clock_out = db.query(TimeClockEntry).filter(
-            TimeClockEntry.staff_id == clock_in_data.staff_id,
+            TimeClockEntry.staff_id == staff_id,
             TimeClockEntry.entry_type == TimeEntryType.CLOCK_OUT,
             TimeClockEntry.entry_datetime > existing_entry.entry_datetime
         ).first()
@@ -67,7 +81,7 @@ async def clock_in(
     try:
         # Create clock-in entry
         clock_in_entry = TimeClockEntry(
-            staff_id=clock_in_data.staff_id,
+            staff_id=staff_id,
             shift_id=clock_in_data.shift_id,
             entry_type=TimeEntryType.CLOCK_IN,
             entry_datetime=datetime.utcnow(),
@@ -113,21 +127,35 @@ async def clock_out(
 ):
     """Clock out from a shift."""
 
-    # Validate staff
-    staff = db.query(Staff).filter(
-        Staff.id == clock_out_data.staff_id,
-        Staff.organization_id == current_user.organization_id
-    ).first()
-
-    if not staff:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Staff member not found"
-        )
+    # Get staff_id - use provided value or derive from current user
+    staff_id = clock_out_data.staff_id
+    if not staff_id:
+        # Get staff record for current user
+        staff = db.query(Staff).filter(
+            Staff.user_id == current_user.id,
+            Staff.organization_id == current_user.organization_id
+        ).first()
+        if not staff:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No staff record found for current user"
+            )
+        staff_id = staff.id
+    else:
+        # Validate provided staff_id
+        staff = db.query(Staff).filter(
+            Staff.id == staff_id,
+            Staff.organization_id == current_user.organization_id
+        ).first()
+        if not staff:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Staff member not found"
+            )
 
     # Find the most recent clock-in without clock-out
     clock_in_entry = db.query(TimeClockEntry).filter(
-        TimeClockEntry.staff_id == clock_out_data.staff_id,
+        TimeClockEntry.staff_id == staff_id,
         TimeClockEntry.entry_type == TimeEntryType.CLOCK_IN
     ).order_by(TimeClockEntry.entry_datetime.desc()).first()
 
@@ -139,7 +167,7 @@ async def clock_out(
 
     # Check if already clocked out
     clock_out_check = db.query(TimeClockEntry).filter(
-        TimeClockEntry.staff_id == clock_out_data.staff_id,
+        TimeClockEntry.staff_id == staff_id,
         TimeClockEntry.entry_type == TimeEntryType.CLOCK_OUT,
         TimeClockEntry.entry_datetime > clock_in_entry.entry_datetime
     ).first()
@@ -150,11 +178,80 @@ async def clock_out(
             detail="Staff member is already clocked out"
         )
 
+    # Validate required documentation is completed before allowing clock-out
+    shift_id = clock_out_data.shift_id or clock_in_entry.shift_id
+    if shift_id:
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
+        if shift and shift.required_documentation:
+            # Check documentation status
+            required_docs = shift.required_documentation
+            missing_docs = []
+
+            for doc_type in required_docs:
+                is_submitted = False
+
+                if doc_type == "vitals_log" and shift.client_id:
+                    from app.models.vitals_log import VitalsLog
+                    vitals = db.query(VitalsLog).filter(
+                        VitalsLog.client_id == shift.client_id,
+                        VitalsLog.staff_id == current_user.id,
+                        VitalsLog.created_at >= datetime.combine(shift.shift_date, shift.start_time or datetime.min.time()),
+                        VitalsLog.created_at <= datetime.utcnow()
+                    ).first()
+                    is_submitted = vitals is not None
+
+                elif doc_type == "shift_note":
+                    from app.models.shift_note import ShiftNote
+                    query = db.query(ShiftNote).filter(
+                        ShiftNote.staff_id == current_user.id,
+                        ShiftNote.shift_date == shift.shift_date
+                    )
+                    if shift.client_id:
+                        query = query.filter(ShiftNote.client_id == shift.client_id)
+                    note = query.first()
+                    is_submitted = note is not None
+
+                elif doc_type == "meal_log" and shift.client_id:
+                    from app.models.meal_log import MealLog
+                    meal = db.query(MealLog).filter(
+                        MealLog.client_id == shift.client_id,
+                        MealLog.staff_id == current_user.id,
+                        MealLog.meal_date == shift.shift_date
+                    ).first()
+                    is_submitted = meal is not None
+
+                elif doc_type == "incident_report" and shift.client_id:
+                    from app.models.incident_report import IncidentReport
+                    incident = db.query(IncidentReport).filter(
+                        IncidentReport.client_id == shift.client_id,
+                        IncidentReport.staff_id == current_user.id,
+                        IncidentReport.incident_date == shift.shift_date
+                    ).first()
+                    is_submitted = incident is not None
+
+                elif doc_type == "activity_log" and shift.client_id:
+                    from app.models.activity_log import ActivityLog
+                    activity = db.query(ActivityLog).filter(
+                        ActivityLog.client_id == shift.client_id,
+                        ActivityLog.staff_id == current_user.id,
+                        ActivityLog.activity_date == shift.shift_date
+                    ).first()
+                    is_submitted = activity is not None
+
+                if not is_submitted:
+                    missing_docs.append(doc_type)
+
+            if missing_docs:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot clock out. Please complete the following required documentation: {', '.join(missing_docs)}"
+                )
+
     try:
         # Create clock-out entry
         clock_out_entry = TimeClockEntry(
-            staff_id=clock_out_data.staff_id,
-            shift_id=clock_out_data.shift_id or clock_in_entry.shift_id,
+            staff_id=staff_id,
+            shift_id=shift_id,
             entry_type=TimeEntryType.CLOCK_OUT,
             entry_datetime=datetime.utcnow(),
             location_verified=bool(clock_out_data.geolocation),
@@ -180,7 +277,7 @@ async def clock_out(
 
         # Calculate and record overtime if applicable
         await calculate_overtime(
-            staff_id=clock_out_data.staff_id,
+            staff_id=staff_id,
             shift_id=shift_id,
             clock_in_time=clock_in_entry.entry_datetime,
             clock_out_time=clock_out_entry.entry_datetime,

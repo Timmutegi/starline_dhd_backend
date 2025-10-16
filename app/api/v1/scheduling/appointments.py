@@ -14,9 +14,9 @@ from app.models.scheduling import (
 from app.middleware.auth import get_current_user, require_permission
 from app.schemas.scheduling import (
     AppointmentCreate, AppointmentUpdate, AppointmentResponse,
-    RecurringAppointmentCreate, RecurringAppointmentUpdate, RecurringAppointmentResponse,
-    PaginatedResponse
+    RecurringAppointmentCreate, RecurringAppointmentUpdate, RecurringAppointmentResponse
 )
+from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.auth import MessageResponse
 import logging
 
@@ -116,7 +116,7 @@ async def create_appointment(
             detail="Failed to create appointment"
         )
 
-@router.get("/", response_model=PaginatedResponse)
+@router.get("/")
 async def get_appointments(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
@@ -137,7 +137,13 @@ async def get_appointments(
 
     # If user is Support Staff (DSP), only show their appointments
     if current_user.role and current_user.role.name == "Support Staff":
-        query = query.filter(Appointment.staff_id == current_user.id)
+        # Get staff record for current user to filter by staff_id
+        staff = db.query(Staff).filter(Staff.user_id == current_user.id).first()
+        if staff:
+            query = query.filter(Appointment.staff_id == staff.id)
+        else:
+            # If no staff record, return empty result
+            query = query.filter(Appointment.id == None)
 
     # Apply filters
     if client_id:
@@ -168,12 +174,39 @@ async def get_appointments(
 
     pages = (total + limit - 1) // limit
 
+    # Enrich appointments with client and staff names
+    enriched_appointments = []
+    for appointment in appointments:
+        client = db.query(Client).filter(Client.id == appointment.client_id).first()
+        staff = db.query(User).filter(User.id == appointment.staff_id).first()
+
+        appointment_dict = {
+            "id": str(appointment.id),
+            "client_id": str(appointment.client_id),
+            "client_name": f"{client.first_name} {client.last_name}" if client else "Unknown",
+            "staff_id": str(appointment.staff_id),
+            "staff_name": f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
+            "appointment_type": appointment.appointment_type.value if hasattr(appointment.appointment_type, 'value') else str(appointment.appointment_type),
+            "title": appointment.title,
+            "description": appointment.description,
+            "location": appointment.location,
+            "start_datetime": appointment.start_datetime.isoformat(),
+            "end_datetime": appointment.end_datetime.isoformat(),
+            "scheduled_time": appointment.start_datetime.strftime("%I:%M %p"),
+            "status": appointment.status.value if hasattr(appointment.status, 'value') else str(appointment.status),
+            "created_at": appointment.created_at.isoformat(),
+            "updated_at": appointment.updated_at.isoformat()
+        }
+        enriched_appointments.append(appointment_dict)
+
     return PaginatedResponse(
-        items=[AppointmentResponse.model_validate(a) for a in appointments],
-        total=total,
-        page=(skip // limit) + 1,
-        size=limit,
-        pages=pages
+        data=enriched_appointments,
+        pagination=PaginationMeta(
+            total=total,
+            page=(skip // limit) + 1,
+            page_size=limit,
+            pages=pages
+        )
     )
 
 @router.get("/{appointment_id}", response_model=AppointmentResponse)

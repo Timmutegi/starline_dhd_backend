@@ -33,7 +33,17 @@ limiter = Limiter(key_func=get_remote_address)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import os
     logger.info("Starting up Starline Backend...")
+
+    # Create uploads directory if it doesn't exist
+    upload_dir = settings.UPLOAD_DIR
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir, exist_ok=True)
+        logger.info(f"Created uploads directory: {upload_dir}")
+    else:
+        logger.info(f"Uploads directory exists: {upload_dir}")
+
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created/verified")
     yield

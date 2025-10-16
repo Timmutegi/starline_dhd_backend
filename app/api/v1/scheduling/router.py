@@ -158,6 +158,68 @@ async def get_current_shift(
         minutes = int((elapsed.total_seconds() % 3600) // 60)
         time_on_shift = f"{hours}h {minutes}m"
 
+    # Check documentation status
+    documentation_status = {}
+    can_clock_out = True
+    missing_documents = []
+
+    if current_shift.client_id and current_shift.required_documentation:
+        required_docs = current_shift.required_documentation
+
+        for doc_type in required_docs:
+            is_submitted = False
+
+            if doc_type == "vitals_log":
+                from app.models.vitals_log import VitalsLog
+                vitals = db.query(VitalsLog).filter(
+                    VitalsLog.client_id == current_shift.client_id,
+                    VitalsLog.created_at >= datetime.combine(current_shift.shift_date, current_shift.start_time or datetime.min.time()),
+                    VitalsLog.created_at <= datetime.utcnow()
+                ).first()
+                is_submitted = vitals is not None
+
+            elif doc_type == "shift_note":
+                from app.models.shift_note import ShiftNote
+                note = db.query(ShiftNote).filter(
+                    ShiftNote.client_id == current_shift.client_id,
+                    ShiftNote.shift_date == current_shift.shift_date
+                ).first()
+                is_submitted = note is not None
+
+            elif doc_type == "meal_log":
+                from app.models.meal_log import MealLog
+                meal = db.query(MealLog).filter(
+                    MealLog.client_id == current_shift.client_id,
+                    MealLog.meal_date == current_shift.shift_date
+                ).first()
+                is_submitted = meal is not None
+
+            elif doc_type == "incident_report":
+                from app.models.incident_report import IncidentReport
+                incident = db.query(IncidentReport).filter(
+                    IncidentReport.client_id == current_shift.client_id,
+                    IncidentReport.incident_date == current_shift.shift_date
+                ).first()
+                is_submitted = incident is not None
+
+            elif doc_type == "activity_log":
+                from app.models.activity_log import ActivityLog
+                activity = db.query(ActivityLog).filter(
+                    ActivityLog.client_id == current_shift.client_id,
+                    ActivityLog.activity_date == current_shift.shift_date
+                ).first()
+                is_submitted = activity is not None
+
+            documentation_status[doc_type] = {
+                "required": True,
+                "submitted": is_submitted
+            }
+
+            if not is_submitted:
+                missing_documents.append(doc_type)
+
+        can_clock_out = len(missing_documents) == 0
+
     return {
         "has_active_shift": True,
         "shift": {
@@ -166,7 +228,8 @@ async def get_current_shift(
             "start_time": current_shift.start_time.strftime("%I:%M %p") if current_shift.start_time else None,
             "end_time": current_shift.end_time.strftime("%I:%M %p") if current_shift.end_time else None,
             "status": current_shift.status.value,
-            "notes": current_shift.notes
+            "notes": current_shift.notes,
+            "required_documentation": current_shift.required_documentation or []
         },
         "client": {
             "id": str(client.id) if client else None,
@@ -187,8 +250,117 @@ async def get_current_shift(
             "total": total_tasks,
             "completed": completed_tasks,
             "pending": total_tasks - completed_tasks
+        },
+        "documentation": {
+            "status": documentation_status,
+            "can_clock_out": can_clock_out,
+            "missing_documents": missing_documents
         }
     }
+
+
+@router.get("/shifts/me")
+async def get_my_shifts(
+    start_date: Optional[date] = Query(None, description="Filter shifts from this date"),
+    end_date: Optional[date] = Query(None, description="Filter shifts until this date"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all shifts for the logged-in DSP staff member."""
+    from app.models.staff import StaffAssignment
+    from app.models.client import ClientAssignment, ClientLocation
+    from app.models.scheduling import ShiftAssignment as ShiftClientAssignment
+
+    # Get staff record for current user
+    staff = db.query(Staff).filter(
+        Staff.user_id == current_user.id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff record not found for current user"
+        )
+
+    # Build query for shifts
+    query = db.query(Shift).options(
+        joinedload(Shift.schedule)
+    ).filter(
+        Shift.staff_id == staff.id
+    )
+
+    # Apply date filters
+    if start_date:
+        query = query.filter(Shift.shift_date >= start_date)
+    else:
+        # Default to showing shifts from today onwards
+        query = query.filter(Shift.shift_date >= date.today())
+
+    if end_date:
+        query = query.filter(Shift.shift_date <= end_date)
+
+    # Order by date and time
+    shifts = query.order_by(Shift.shift_date, Shift.start_time).all()
+
+    # Format shift data
+    shifts_data = []
+    for shift in shifts:
+        # Get client assignment for this shift
+        shift_client_assignment = db.query(ShiftClientAssignment).options(
+            joinedload(ShiftClientAssignment.client)
+        ).filter(
+            ShiftClientAssignment.shift_id == shift.id
+        ).first()
+
+        client = shift_client_assignment.client if shift_client_assignment else None
+
+        # If no shift-specific client, get from staff assignment
+        if not client:
+            assignment = db.query(StaffAssignment).options(
+                joinedload(StaffAssignment.client)
+            ).filter(
+                StaffAssignment.staff_id == staff.id,
+                StaffAssignment.is_active == True
+            ).first()
+
+            if assignment:
+                client = assignment.client
+
+        # Get location
+        location_name = ""
+        if client:
+            client_assignment = db.query(ClientAssignment).options(
+                joinedload(ClientAssignment.location)
+            ).filter(
+                ClientAssignment.client_id == client.id,
+                ClientAssignment.is_current == True
+            ).first()
+
+            if client_assignment and client_assignment.location:
+                location_name = client_assignment.location.name
+
+        # Determine activity type based on shift time or default to "Client Shift"
+        activity_type = "Client Shift"
+
+        shifts_data.append({
+            "date": shift.shift_date.strftime("%a, %b %d") if shift.shift_date else "",
+            "time": f"{shift.start_time.strftime('%I:%M %p') if shift.start_time else ''} - {shift.end_time.strftime('%I:%M %p') if shift.end_time else ''}",
+            "client_name": client.full_name if client else "No Client Assigned",
+            "location": location_name or "Location Not Set",
+            "activity_type": activity_type,
+            "status": shift.status.value.capitalize() if shift.status else "Scheduled",
+            "shift_id": str(shift.id),
+            "shift_date_iso": shift.shift_date.isoformat() if shift.shift_date else "",
+            "start_time": shift.start_time.strftime("%H:%M:%S") if shift.start_time else "",
+            "end_time": shift.end_time.strftime("%H:%M:%S") if shift.end_time else ""
+        })
+
+    return {
+        "shifts": shifts_data,
+        "total": len(shifts_data)
+    }
+
 
 # Schedule Management Endpoints
 
@@ -797,3 +969,99 @@ async def get_schedule_conflicts(
     conflicts = query.all()
 
     return [ScheduleConflictResponse.model_validate(c) for c in conflicts]
+
+# Documentation Status Endpoint
+@router.get("/shifts/{shift_id}/documentation-status")
+async def get_shift_documentation_status(
+    shift_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get documentation completion status for a shift.
+    Returns which required documents have been submitted.
+    """
+    # Get shift
+    shift = db.query(Shift).join(Schedule).filter(
+        Shift.id == shift_id,
+        Schedule.organization_id == current_user.organization_id
+    ).first()
+
+    if not shift:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shift not found"
+        )
+
+    # Get required documentation list
+    required_docs = shift.required_documentation or []
+
+    # Check which documents have been submitted
+    documentation_status = {}
+
+    for doc_type in required_docs:
+        is_submitted = False
+
+        if doc_type == "vitals_log":
+            from app.models.vitals_log import VitalsLog
+            vitals = db.query(VitalsLog).filter(
+                VitalsLog.client_id == shift.client_id,
+                VitalsLog.created_at >= datetime.combine(shift.shift_date, shift.start_time or datetime.min.time()),
+                VitalsLog.created_at <= datetime.combine(shift.shift_date, shift.end_time or datetime.max.time())
+            ).first()
+            is_submitted = vitals is not None
+
+        elif doc_type == "shift_note":
+            from app.models.shift_note import ShiftNote
+            note = db.query(ShiftNote).filter(
+                ShiftNote.client_id == shift.client_id,
+                ShiftNote.shift_date == shift.shift_date
+            ).first()
+            is_submitted = note is not None
+
+        elif doc_type == "meal_log":
+            from app.models.meal_log import MealLog
+            meal = db.query(MealLog).filter(
+                MealLog.client_id == shift.client_id,
+                MealLog.meal_date == shift.shift_date
+            ).first()
+            is_submitted = meal is not None
+
+        elif doc_type == "incident_report":
+            from app.models.incident_report import IncidentReport
+            incident = db.query(IncidentReport).filter(
+                IncidentReport.client_id == shift.client_id,
+                IncidentReport.incident_date == shift.shift_date
+            ).first()
+            is_submitted = incident is not None
+
+        elif doc_type == "activity_log":
+            from app.models.activity_log import ActivityLog
+            activity = db.query(ActivityLog).filter(
+                ActivityLog.client_id == shift.client_id,
+                ActivityLog.activity_date == shift.shift_date
+            ).first()
+            is_submitted = activity is not None
+
+        documentation_status[doc_type] = {
+            "required": True,
+            "submitted": is_submitted
+        }
+
+    # Calculate completion percentage
+    total_required = len(required_docs)
+    total_submitted = sum(1 for status in documentation_status.values() if status["submitted"])
+    completion_percentage = (total_submitted / total_required * 100) if total_required > 0 else 100
+
+    all_complete = total_submitted == total_required
+
+    return {
+        "shift_id": str(shift_id),
+        "shift_date": shift.shift_date.isoformat(),
+        "client_id": str(shift.client_id) if shift.client_id else None,
+        "documentation_status": documentation_status,
+        "completion_percentage": round(completion_percentage, 2),
+        "all_complete": all_complete,
+        "can_clock_out": all_complete,
+        "missing_documents": [doc for doc, status in documentation_status.items() if not status["submitted"]]
+    }

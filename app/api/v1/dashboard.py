@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, text
 from datetime import datetime, date, timedelta
 from typing import Optional, List
+import pytz
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User
@@ -21,6 +22,15 @@ from app.schemas.dashboard import (
 )
 
 router = APIRouter()
+
+def make_aware(dt):
+    """Convert timezone-naive datetime to timezone-aware UTC datetime"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Assume UTC if no timezone info
+        return pytz.UTC.localize(dt)
+    return dt
 
 @router.get("/overview", response_model=DashboardOverview)
 async def get_dashboard_overview(
@@ -298,7 +308,7 @@ async def get_recent_entries(
                 "type": "Vitals Log",
                 "time": vital.recorded_at.strftime("%I:%M %p") if vital.recorded_at else "",
                 "status": "Done",
-                "created_at": vital.recorded_at
+                "created_at": make_aware(vital.recorded_at)
             })
 
         # Get recent shift notes
@@ -313,7 +323,7 @@ async def get_recent_entries(
                 "type": "Shift Note",
                 "time": note.created_at.strftime("%I:%M %p") if note.created_at else "",
                 "status": "Done",
-                "created_at": note.created_at
+                "created_at": make_aware(note.created_at)
             })
 
         # Get recent meal logs
@@ -328,7 +338,7 @@ async def get_recent_entries(
                 "type": "Meal Intake",
                 "time": meal.created_at.strftime("%I:%M %p") if meal.created_at else "",
                 "status": "Done",
-                "created_at": meal.created_at
+                "created_at": make_aware(meal.created_at)
             })
 
         # Get recent incident reports
@@ -338,15 +348,36 @@ async def get_recent_entries(
 
         for incident in incidents:
             client = db.query(Client).filter(Client.id == incident.client_id).first()
-            # Combine incident_date and incident_time for display
-            from datetime import datetime
-            incident_dt = datetime.combine(incident.incident_date, datetime.min.time()) if incident.incident_date else incident.created_at
+            # Use created_at for sorting (it's always timezone-aware)
+            incident_dt = incident.created_at
+
+            # Get severity value - handle both enum and string
+            severity_value = incident.severity.value if hasattr(incident.severity, 'value') else str(incident.severity).lower()
+
+            # Convert 24-hour time to 12-hour format
+            display_time = ""
+            if incident.incident_time:
+                try:
+                    # Parse time like "15:04" and convert to "3:04 PM"
+                    time_parts = incident.incident_time.split(':')
+                    if len(time_parts) >= 2:
+                        hour = int(time_parts[0])
+                        minute = time_parts[1]
+                        period = "AM" if hour < 12 else "PM"
+                        display_hour = hour if hour <= 12 else hour - 12
+                        display_hour = 12 if display_hour == 0 else display_hour
+                        display_time = f"{display_hour}:{minute} {period}"
+                    else:
+                        display_time = incident.incident_time
+                except:
+                    display_time = incident.incident_time
+
             recent_entries.append({
                 "client": client.full_name if client else "Unknown",
                 "type": "IR",
-                "time": incident.incident_time if incident.incident_time else "",
-                "status": "Urgent" if incident.severity.value == "high" or incident.severity.value == "critical" else "Pending",
-                "created_at": incident_dt
+                "time": display_time,
+                "status": "Urgent" if severity_value in ["high", "critical", "HIGH", "CRITICAL"] else "Pending",
+                "created_at": make_aware(incident_dt)
             })
 
         # Sort by created_at and limit to requested count
@@ -360,6 +391,11 @@ async def get_recent_entries(
         return {"entries": recent_entries}
 
     except Exception as e:
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error retrieving recent entries: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve recent entries: {str(e)}"
