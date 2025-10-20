@@ -44,9 +44,9 @@ async def request_password_reset(
     reset_token = generate_password_reset_token(user.email)
 
     user.password_reset_token = reset_token
-    user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
+    user.password_reset_expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
     user.email_verification_otp = hash_otp(otp)
-    user.email_verification_otp_expires = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRE_MINUTES)
+    user.email_verification_otp_expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=settings.OTP_EXPIRE_MINUTES)
 
     db.add(AuthAuditLog(
         user_id=user.id,
@@ -90,7 +90,7 @@ async def verify_reset_otp(
             detail="No OTP found. Please request a password reset first."
         )
 
-    if user.email_verification_otp_expires < datetime.now(timezone.utc):
+    if user.email_verification_otp_expires < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="OTP has expired. Please request a new password reset."
@@ -133,7 +133,7 @@ async def reset_password(
             detail="Invalid reset token"
         )
 
-    if user.password_reset_expires < datetime.now(timezone.utc):
+    if user.password_reset_expires < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Reset token has expired"
@@ -169,7 +169,7 @@ async def reset_password(
     user.password_reset_expires = None
     user.email_verification_otp = None
     user.email_verification_otp_expires = None
-    user.password_changed_at = datetime.now(timezone.utc)
+    user.password_changed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     user.must_change_password = False  # Clear mandatory password change flag
 
     db.add(AuthAuditLog(
@@ -233,7 +233,7 @@ async def change_password(
     ))
 
     current_user.password_hash = new_password_hash
-    current_user.password_changed_at = datetime.now(timezone.utc)
+    current_user.password_changed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     current_user.must_change_password = False  # Clear mandatory password change flag
 
     db.add(AuthAuditLog(
