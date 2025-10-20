@@ -4,7 +4,7 @@ Training Management API Endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
@@ -279,8 +279,8 @@ def start_course(
         # Update existing progress
         if progress.status == ProgressStatus.NOT_STARTED:
             progress.status = ProgressStatus.IN_PROGRESS
-            progress.started_at = datetime.utcnow()
-            progress.last_accessed_at = datetime.utcnow()
+            progress.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            progress.last_accessed_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.commit()
             db.refresh(progress)
     else:
@@ -290,8 +290,8 @@ def start_course(
             user_id=str(current_user.id),
             organization_id=current_user.organization_id,
             status=ProgressStatus.IN_PROGRESS,
-            started_at=datetime.utcnow(),
-            last_accessed_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            last_accessed_at=datetime.now(timezone.utc).replace(tzinfo=None)
         )
         db.add(progress)
         db.commit()
@@ -346,15 +346,15 @@ def complete_course(
             course_id=course_id,
             user_id=str(current_user.id),
             organization_id=current_user.organization_id,
-            started_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc).replace(tzinfo=None)
         )
         db.add(progress)
 
     # Update progress to completed
     progress.status = ProgressStatus.COMPLETED
     progress.progress_percentage = 100
-    progress.completed_at = datetime.utcnow()
-    progress.last_accessed_at = datetime.utcnow()
+    progress.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    progress.last_accessed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Handle quiz score if provided
     if data.quiz_score is not None:
@@ -371,10 +371,10 @@ def complete_course(
 
     # Handle certification if applicable
     if course.provides_certification and progress.passed:
-        progress.certification_issued_at = datetime.utcnow()
+        progress.certification_issued_at = datetime.now(timezone.utc).replace(tzinfo=None)
         if course.certification_valid_days:
             from datetime import timedelta
-            progress.certification_expires_at = datetime.utcnow() + timedelta(days=course.certification_valid_days)
+            progress.certification_expires_at = (datetime.now(timezone.utc) + timedelta(days=course.certification_valid_days)).replace(tzinfo=None)
 
     db.commit()
     db.refresh(progress)
@@ -406,15 +406,15 @@ def update_training_progress(
     if data.status:
         progress.status = data.status
         if data.status == ProgressStatus.IN_PROGRESS and not progress.started_at:
-            progress.started_at = datetime.utcnow()
+            progress.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
         elif data.status == ProgressStatus.COMPLETED and not progress.completed_at:
-            progress.completed_at = datetime.utcnow()
+            progress.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     if data.quiz_score is not None:
         progress.quiz_score = data.quiz_score
         progress.quiz_attempts += 1
 
-    progress.last_accessed_at = datetime.utcnow()
+    progress.last_accessed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
     db.refresh(progress)

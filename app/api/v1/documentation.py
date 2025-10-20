@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional, List
 import uuid
 import os
@@ -87,8 +87,9 @@ def verify_shift_time(db: Session, staff_user_id: str, client_id: str, organizat
         tz = pytz.UTC
 
     # Get current time in user's timezone
-    now_utc = datetime.utcnow()
-    now_user_tz = pytz.UTC.localize(now_utc).astimezone(tz)
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    now_utc_aware = pytz.UTC.localize(now_utc)
+    now_user_tz = now_utc_aware.astimezone(tz)
     current_date = now_user_tz.date()
     current_time = now_user_tz.time()
 
@@ -157,8 +158,8 @@ async def create_vitals_log(
             heart_rate=vitals_data.heart_rate,
             oxygen_saturation=vitals_data.oxygen_saturation,
             notes=vitals_data.notes,
-            recorded_at=vitals_data.recorded_at or datetime.utcnow(),
-            created_at=datetime.utcnow()
+            recorded_at=vitals_data.recorded_at or datetime.now(timezone.utc).replace(tzinfo=None),
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None)
         )
 
         db.add(vitals_log)
@@ -311,7 +312,7 @@ async def create_shift_note(
             challenges_faced=shift_note_data.challenges_faced,
             support_required=shift_note_data.support_required,
             observations=shift_note_data.observations,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None)
         )
 
         db.add(shift_note)
@@ -503,7 +504,7 @@ async def create_incident_report(
             follow_up_required=follow_up_required,
             attached_files=uploaded_files,
             status=IncidentStatusEnum.PENDING,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None)
         )
 
         db.add(incident)
@@ -715,7 +716,7 @@ async def create_meal_log(
             staff_id=current_user.id,
             organization_id=current_user.organization_id,
             meal_type=meal_data.meal_type,
-            meal_date=meal_data.meal_date or datetime.utcnow(),
+            meal_date=meal_data.meal_date or datetime.now(timezone.utc).replace(tzinfo=None),
             meal_time=meal_data.meal_time,
             food_items=meal_data.food_items,
             intake_amount=meal_data.intake_amount,
@@ -962,7 +963,7 @@ async def update_meal_log(
         for field, value in update_data.items():
             setattr(meal_log, field, value)
 
-        meal_log.updated_at = datetime.utcnow()
+        meal_log.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         db.commit()
         db.refresh(meal_log)
@@ -1090,7 +1091,7 @@ async def create_activity_log(
             activity_type=activity_data.activity_type,
             activity_name=activity_data.activity_name,
             activity_description=activity_data.activity_description,
-            activity_date=activity_data.activity_date or datetime.utcnow(),
+            activity_date=activity_data.activity_date or datetime.now(timezone.utc).replace(tzinfo=None),
             start_time=activity_data.start_time,
             end_time=activity_data.end_time,
             duration_minutes=activity_data.duration_minutes,

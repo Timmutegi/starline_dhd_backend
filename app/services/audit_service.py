@@ -7,7 +7,7 @@ import uuid
 import asyncio
 import hashlib
 import enum
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List, Union
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, func
@@ -143,7 +143,7 @@ class AuditService:
                 response_status=response_status,
                 error_message=error_message,
                 duration_ms=duration_ms,
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
 
             self.db.add(audit_log)
@@ -214,7 +214,7 @@ class AuditService:
                 violation_type=violation_type,
                 severity=severity,
                 description=description,
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(timezone.utc),
                 status="open"
             )
             self.db.add(violation)
@@ -362,7 +362,7 @@ class AuditService:
                 }
                 for violation in violations
             ],
-            "generated_at": datetime.utcnow().isoformat()
+            "generated_at": datetime.now(timezone.utc).isoformat()
         }
 
     def _should_log_action(self, organization_id: Optional[str], action: AuditAction, resource_type: str) -> bool:
@@ -459,7 +459,7 @@ class AuditService:
             return
 
         # Check access volume in last hour
-        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
         recent_access_count = self.db.query(AuditLog).filter(
             and_(
                 AuditLog.user_id == audit_log.user_id,
@@ -488,7 +488,7 @@ class AuditService:
                 violation_type="after_hours_phi_access",
                 severity="low",
                 description=f"PHI accessed outside business hours at {audit_log.created_at}",
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(timezone.utc),
                 status="open"
             )
             self.db.add(violation)
@@ -499,7 +499,7 @@ class AuditService:
             return
 
         # Check failed attempts in last 15 minutes
-        fifteen_min_ago = datetime.utcnow() - timedelta(minutes=15)
+        fifteen_min_ago = datetime.now(timezone.utc) - timedelta(minutes=15)
         failed_count = self.db.query(AuditLog).filter(
             and_(
                 AuditLog.user_id == audit_log.user_id,

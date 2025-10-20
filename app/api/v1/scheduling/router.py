@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, date, timedelta
+from datetime import datetime, timezone, date, timedelta
 from app.core.database import get_db
 from app.models.user import User
 from app.models.staff import Staff
@@ -153,7 +153,7 @@ async def get_current_shift(
     clock_in_time = None
     if clock_in_entry:
         clock_in_time = clock_in_entry.entry_datetime
-        elapsed = datetime.utcnow() - clock_in_entry.entry_datetime
+        elapsed = datetime.now(timezone.utc) - clock_in_entry.entry_datetime
         hours = int(elapsed.total_seconds() // 3600)
         minutes = int((elapsed.total_seconds() % 3600) // 60)
         time_on_shift = f"{hours}h {minutes}m"
@@ -174,7 +174,7 @@ async def get_current_shift(
                 vitals = db.query(VitalsLog).filter(
                     VitalsLog.client_id == current_shift.client_id,
                     VitalsLog.created_at >= datetime.combine(current_shift.shift_date, current_shift.start_time or datetime.min.time()),
-                    VitalsLog.created_at <= datetime.utcnow()
+                    VitalsLog.created_at <= datetime.now(timezone.utc)
                 ).first()
                 is_submitted = vitals is not None
 
@@ -484,7 +484,7 @@ async def update_schedule(
     for field, value in update_data.items():
         setattr(schedule, field, value)
 
-    schedule.updated_at = datetime.utcnow()
+    schedule.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(schedule)
 
@@ -517,8 +517,8 @@ async def publish_schedule(
 
     schedule.status = ScheduleStatus.PUBLISHED
     schedule.approved_by = current_user.id
-    schedule.approved_at = datetime.utcnow()
-    schedule.updated_at = datetime.utcnow()
+    schedule.approved_at = datetime.now(timezone.utc)
+    schedule.updated_at = datetime.now(timezone.utc)
 
     db.commit()
 
@@ -827,7 +827,7 @@ async def update_shift(
     for field, value in update_data.items():
         setattr(shift, field, value)
 
-    shift.updated_at = datetime.utcnow()
+    shift.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(shift)
 
@@ -860,7 +860,7 @@ async def cancel_shift(
     if reason:
         shift.notes = f"{shift.notes or ''}\n\nCancelled: {reason}".strip()
 
-    shift.updated_at = datetime.utcnow()
+    shift.updated_at = datetime.now(timezone.utc)
     db.commit()
 
     return MessageResponse(

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, text
-from datetime import datetime, date, timedelta
+from datetime import datetime, timezone, date, timedelta
 from typing import Optional, List
 import pytz
 from app.core.database import get_db
@@ -199,7 +199,7 @@ async def get_tasks_summary(
         # Overdue tasks (pending or in-progress with due date in the past)
         overdue_tasks = base_query.filter(
             and_(
-                Task.due_date < datetime.utcnow(),
+                Task.due_date < datetime.now(timezone.utc),
                 Task.status.in_([TaskStatusEnum.PENDING, TaskStatusEnum.IN_PROGRESS])
             )
         ).count()

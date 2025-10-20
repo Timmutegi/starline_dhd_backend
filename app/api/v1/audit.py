@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Background
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, desc, func, text
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_admin_or_above, get_super_admin
 from app.models.user import User
@@ -146,7 +146,7 @@ async def get_user_activity(
     """Get user activity history"""
     audit_service = AuditService(db)
 
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     organization_id = None if current_user.role.name == "super_admin" else current_user.organization_id
 
     logs = audit_service.get_user_activity(
@@ -191,7 +191,7 @@ async def get_phi_access_logs(
     """Get PHI access logs for compliance monitoring"""
     audit_service = AuditService(db)
 
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     organization_id = None if current_user.role.name == "super_admin" else current_user.organization_id
 
     logs = audit_service.get_phi_access_logs(
@@ -257,7 +257,7 @@ async def get_compliance_violations(
         query = query.filter(ComplianceViolation.severity == severity)
 
     # Filter by date
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     query = query.filter(ComplianceViolation.detected_at >= start_date)
 
     violations = query.order_by(desc(ComplianceViolation.detected_at)).all()
@@ -287,7 +287,7 @@ async def acknowledge_violation(
         )
 
     violation.status = "acknowledged"
-    violation.acknowledged_at = datetime.utcnow()
+    violation.acknowledged_at = datetime.now(timezone.utc).replace(tzinfo=None)
     violation.acknowledged_by = current_user.id
     violation.resolution_notes = resolution_notes
 
@@ -348,7 +348,7 @@ async def update_audit_settings(
     for field, value in update_data.items():
         setattr(settings, field, value)
 
-    settings.updated_at = datetime.utcnow()
+    settings.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     db.refresh(settings)
 
@@ -456,7 +456,7 @@ async def download_export(
         )
 
     # Check if export has expired
-    if export_record.expires_at and export_record.expires_at < datetime.utcnow():
+    if export_record.expires_at and export_record.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail="Export has expired"
@@ -513,7 +513,7 @@ async def _process_audit_export(export_id: str, export_request: AuditExportReque
             export_record.file_path = file_path
             export_record.file_size_bytes = file_size
             export_record.record_count = len(logs)
-            export_record.expires_at = datetime.utcnow() + timedelta(days=7)  # Expire in 7 days
+            export_record.expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7)  # Expire in 7 days
             db.commit()
 
         db.close()

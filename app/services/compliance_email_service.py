@@ -3,7 +3,7 @@ Compliance Email Service for Audit Alerts and Reports
 Handles sending HIPAA-compliant email notifications for security and compliance events
 """
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from app.services.email_service import EmailService
 from app.core.config import settings
 from app.models.audit_log import AuditLog, ComplianceViolation
@@ -47,8 +47,8 @@ class ComplianceEmailService:
                         "top_users": summary_data.get("top_users", []),
                         "compliance_dashboard_url": f"{settings.FRONTEND_URL}/admin/compliance",
                         "download_report_url": f"{settings.FRONTEND_URL}/admin/compliance/download",
-                        "generated_at": datetime.utcnow().isoformat(),
-                        "next_report_date": (datetime.utcnow() + timedelta(days=7)).strftime("%Y-%m-%d"),
+                        "generated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                        "next_report_date": (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7)).strftime("%Y-%m-%d"),
                         "frontend_url": settings.FRONTEND_URL,
                         "contact_email": settings.FROM_EMAIL
                     }

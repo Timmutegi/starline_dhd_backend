@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, timezone, date, time, timedelta
 from app.core.database import get_db
 from app.models.user import User
 from app.models.staff import Staff
@@ -84,7 +84,7 @@ async def clock_in(
             staff_id=staff_id,
             shift_id=clock_in_data.shift_id,
             entry_type=TimeEntryType.CLOCK_IN,
-            entry_datetime=datetime.utcnow(),
+            entry_datetime=datetime.now(timezone.utc).replace(tzinfo=None),
             location_verified=bool(clock_in_data.geolocation),
             geolocation=clock_in_data.geolocation,
             ip_address=request.client.host if request.client else None,
@@ -103,7 +103,7 @@ async def clock_in(
             shift = db.query(Shift).filter(Shift.id == clock_in_data.shift_id).first()
             if shift and shift.status == ShiftStatus.SCHEDULED:
                 shift.status = ShiftStatus.IN_PROGRESS
-                shift.updated_at = datetime.utcnow()
+                shift.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         db.commit()
         db.refresh(clock_in_entry)
@@ -196,7 +196,7 @@ async def clock_out(
                         VitalsLog.client_id == shift.client_id,
                         VitalsLog.staff_id == current_user.id,
                         VitalsLog.created_at >= datetime.combine(shift.shift_date, shift.start_time or datetime.min.time()),
-                        VitalsLog.created_at <= datetime.utcnow()
+                        VitalsLog.created_at <= datetime.now(timezone.utc).replace(tzinfo=None)
                     ).first()
                     is_submitted = vitals is not None
 
@@ -253,7 +253,7 @@ async def clock_out(
             staff_id=staff_id,
             shift_id=shift_id,
             entry_type=TimeEntryType.CLOCK_OUT,
-            entry_datetime=datetime.utcnow(),
+            entry_datetime=datetime.now(timezone.utc).replace(tzinfo=None),
             location_verified=bool(clock_out_data.geolocation),
             geolocation=clock_out_data.geolocation,
             ip_address=request.client.host if request.client else None,
@@ -273,7 +273,7 @@ async def clock_out(
             shift = db.query(Shift).filter(Shift.id == shift_id).first()
             if shift and shift.status == ShiftStatus.IN_PROGRESS:
                 shift.status = ShiftStatus.COMPLETED
-                shift.updated_at = datetime.utcnow()
+                shift.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Calculate and record overtime if applicable
         await calculate_overtime(
@@ -336,7 +336,7 @@ async def start_break(
             staff_id=staff_id,
             shift_id=shift_id,
             entry_type=TimeEntryType.BREAK_START,
-            entry_datetime=datetime.utcnow(),
+            entry_datetime=datetime.now(timezone.utc).replace(tzinfo=None),
             ip_address=request.client.host if request and request.client else None,
             notes=notes
         )
@@ -407,7 +407,7 @@ async def end_break(
             staff_id=staff_id,
             shift_id=shift_id or break_start.shift_id,
             entry_type=TimeEntryType.BREAK_END,
-            entry_datetime=datetime.utcnow(),
+            entry_datetime=datetime.now(timezone.utc).replace(tzinfo=None),
             ip_address=request.client.host if request and request.client else None,
             notes=notes
         )

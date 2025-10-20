@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, text
-from datetime import datetime, date, timedelta
+from datetime import datetime, timezone, date, timedelta
 from typing import Optional, List, Dict, Any
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
@@ -44,7 +44,7 @@ async def get_admin_dashboard(
         total_staff = db.query(Staff).count()
 
         # Active users in last 24 hours
-        yesterday = datetime.utcnow() - timedelta(days=1)
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
         active_users_24h = db.query(User).filter(
             User.last_login >= yesterday
         ).count()
@@ -94,7 +94,7 @@ async def get_admin_dashboard(
             system_stats=system_stats,
             system_health=system_health,
             organizations=org_summaries,
-            last_updated=datetime.utcnow()
+            last_updated=datetime.now(timezone.utc)
         )
 
     except Exception as e:
@@ -173,7 +173,7 @@ async def get_user_activity(
         if not current_user.is_super_admin and not _has_admin_permission(current_user):
             raise HTTPException(status_code=403, detail="Admin access required")
 
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         query = db.query(User)
 
@@ -188,7 +188,7 @@ async def get_user_activity(
             last_login = user.last_login
             days_since_login = None
             if last_login:
-                days_since_login = (datetime.utcnow() - last_login).days
+                days_since_login = (datetime.now(timezone.utc) - last_login).days
 
             # This would ideally come from audit logs or activity tracking
             login_count = 0  # Placeholder
@@ -244,7 +244,7 @@ async def get_system_health(
             api_status=api_status,
             storage_status=storage_status,
             email_service_status=email_service_status,
-            last_checked=datetime.utcnow()
+            last_checked=datetime.now(timezone.utc)
         )
 
     except Exception as e:
@@ -436,7 +436,7 @@ async def get_usage_report(
                 "active_users": active_users,
                 "activation_rate": (active_users / total_users * 100) if total_users > 0 else 0
             },
-            "generated_at": datetime.utcnow()
+            "generated_at": datetime.now(timezone.utc)
         }
 
         return report

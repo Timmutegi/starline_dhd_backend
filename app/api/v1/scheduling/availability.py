@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, date
+from datetime import datetime, timezone, date
 from app.core.database import get_db
 from app.models.user import User
 from app.models.staff import Staff
@@ -173,7 +173,7 @@ async def update_staff_availability(
         for field, value in update_data.items():
             setattr(availability, field, value)
 
-        availability.updated_at = datetime.utcnow()
+        availability.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(availability)
 
@@ -514,7 +514,7 @@ async def update_coverage_request(
             setattr(coverage_request, field, value)
 
         if request_update.status:
-            coverage_request.responded_at = datetime.utcnow()
+            coverage_request.responded_at = datetime.now(timezone.utc)
             coverage_request.responded_by = current_user.id
 
         db.commit()
@@ -560,7 +560,7 @@ async def approve_coverage_request(
 
     try:
         coverage_request.status = RequestStatus.APPROVED
-        coverage_request.responded_at = datetime.utcnow()
+        coverage_request.responded_at = datetime.now(timezone.utc)
         coverage_request.responded_by = current_user.id
         if notes:
             coverage_request.notes = f"{coverage_request.notes or ''}\n\nApproval Notes: {notes}".strip()

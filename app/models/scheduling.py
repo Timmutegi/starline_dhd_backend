@@ -2,7 +2,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Enum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
-from datetime import datetime, date, time
+from datetime import datetime, timezone, date, time
 import uuid
 import enum
 
@@ -136,8 +136,8 @@ class ShiftTemplate(Base):
     meal_break_minutes = Column(Integer, default=0)
     days_of_week = Column(ARRAY(Integer), nullable=False)  # [1,2,3,4,5] for Mon-Fri
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     organization = relationship("Organization")
 
@@ -156,8 +156,8 @@ class Schedule(Base):
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     organization = relationship("Organization")
     creator = relationship("User", foreign_keys=[created_by])
@@ -185,8 +185,8 @@ class Shift(Base):
     is_mandatory = Column(Boolean, default=False)
     required_documentation = Column(ARRAY(String), nullable=True, default=["shift_note"])  # e.g., ["vitals_log", "shift_note", "meal_log", "incident_report"]
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     schedule = relationship("Schedule", back_populates="shifts")
     staff = relationship("Staff", foreign_keys=[staff_id])
@@ -206,7 +206,7 @@ class ShiftAssignment(Base):
     end_time = Column(Time, nullable=True)
     services_provided = Column(JSONB, nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     shift = relationship("Shift", back_populates="assignments")
     client = relationship("Client")
@@ -224,8 +224,8 @@ class StaffAvailability(Base):
     effective_date = Column(Date, nullable=False, default=date.today)
     expiry_date = Column(Date, nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff")
 
@@ -242,8 +242,8 @@ class TimeOffScheduling(Base):
     affects_scheduling = Column(Boolean, default=True)
     replacement_required = Column(Boolean, default=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff")
 
@@ -257,7 +257,7 @@ class CoverageRequest(Base):
     reason = Column(Text, nullable=False)
     request_type = Column(Enum(RequestType), nullable=False)
     status = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False)
-    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    requested_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False)
     responded_at = Column(DateTime, nullable=True)
     responded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     notes = Column(Text, nullable=True)
@@ -307,8 +307,8 @@ class Appointment(Base):
     transport_staff_id = Column(UUID(as_uuid=True), ForeignKey("staff.id"), nullable=True)
     reminder_sent = Column(Boolean, default=False)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     organization = relationship("Organization")
     client = relationship("Client")
@@ -335,8 +335,8 @@ class RecurringAppointment(Base):
     end_date = Column(Date, nullable=True)
     max_occurrences = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     organization = relationship("Organization")
     client = relationship("Client")
@@ -357,7 +357,7 @@ class TimeClockEntry(Base):
     device_info = Column(JSONB, nullable=True)
     photo_url = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff")
     shift = relationship("Shift", back_populates="time_entries")
@@ -397,7 +397,7 @@ class ScheduleConflict(Base):
     resolved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     resolved_at = Column(DateTime, nullable=True)
     resolution_notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     shift = relationship("Shift")
     staff = relationship("Staff")
@@ -422,8 +422,8 @@ class CalendarEvent(Base):
     color = Column(String(7), default="#4F46E5")
     visibility = Column(Enum(EventVisibility), default=EventVisibility.PUBLIC, nullable=False)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     organization = relationship("Organization")
     creator = relationship("User", foreign_keys=[created_by])

@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, ForeignKey, DateTime, Text, Float, Integer, Boolean, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import enum
 
@@ -33,7 +33,7 @@ class MealLog(Base):
 
     # Meal details
     meal_type = Column(SQLEnum(MealTypeEnum), nullable=False)
-    meal_date = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    meal_date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
     meal_time = Column(String(10), nullable=True)  # e.g., "08:30 AM"
 
     # Food items and intake
@@ -69,8 +69,8 @@ class MealLog(Base):
     photo_urls = Column(JSONB, nullable=True)  # Array of photo URLs
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     client = relationship("Client")

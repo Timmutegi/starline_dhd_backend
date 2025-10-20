@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, ForeignKey, DateTime, Text, Integer, Boolean, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import enum
 
@@ -52,7 +52,7 @@ class ActivityLog(Base):
     activity_description = Column(Text, nullable=True)
 
     # Schedule
-    activity_date = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    activity_date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
     start_time = Column(String(10), nullable=True)  # e.g., "10:00 AM"
     end_time = Column(String(10), nullable=True)  # e.g., "11:30 AM"
     duration_minutes = Column(Integer, nullable=True)
@@ -108,8 +108,8 @@ class ActivityLog(Base):
     video_urls = Column(JSONB, nullable=True)  # Array of video URLs
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     client = relationship("Client")

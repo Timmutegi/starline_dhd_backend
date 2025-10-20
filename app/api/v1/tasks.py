@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, or_
-from datetime import datetime, date
+from datetime import datetime, timezone, date
 from typing import Optional, List
 import uuid
 from app.core.database import get_db
@@ -145,7 +145,7 @@ async def get_tasks(
         if overdue_only:
             query = query.filter(
                 and_(
-                    Task.due_date < datetime.utcnow(),
+                    Task.due_date < datetime.now(timezone.utc).replace(tzinfo=None),
                     Task.status.in_([TaskStatusEnum.PENDING, TaskStatusEnum.IN_PROGRESS])
                 )
             )
@@ -270,7 +270,7 @@ async def update_task(
 
             # Set completed_at when task is marked as completed
             if task.status == TaskStatusEnum.COMPLETED and old_status != TaskStatusEnum.COMPLETED:
-                task.completed_at = datetime.utcnow()
+                task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
             elif task.status != TaskStatusEnum.COMPLETED:
                 task.completed_at = None
 
@@ -292,7 +292,7 @@ async def update_task(
         if task_update.notes is not None:
             task.notes = task_update.notes
 
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         db.commit()
         db.refresh(task)
@@ -385,7 +385,7 @@ async def get_task_summary(
         pending_tasks = base_query.filter(Task.status == TaskStatusEnum.PENDING).count()
         overdue_tasks = base_query.filter(
             and_(
-                Task.due_date < datetime.utcnow(),
+                Task.due_date < datetime.now(timezone.utc).replace(tzinfo=None),
                 Task.status.in_([TaskStatusEnum.PENDING, TaskStatusEnum.IN_PROGRESS])
             )
         ).count()

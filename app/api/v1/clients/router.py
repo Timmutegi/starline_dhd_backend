@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, time, date
+from datetime import datetime, timezone, time, date
 import secrets
 import string
 import pytz
@@ -107,7 +107,7 @@ async def create_client(
         status=UserStatus.ACTIVE,
         email_verified=False,
         must_change_password=True,
-        password_changed_at=datetime.utcnow(),
+        password_changed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         use_custom_permissions=client_data.use_custom_permissions
     )
     db.add(user)
@@ -297,7 +297,7 @@ async def update_client(
     for field, value in update_data.items():
         setattr(client, field, value)
 
-    client.updated_at = datetime.utcnow()
+    client.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     try:
         db.commit()
@@ -338,7 +338,7 @@ async def delete_client(
 
     # Soft delete by changing status
     client.status = "inactive"
-    client.updated_at = datetime.utcnow()
+    client.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Also deactivate user account if exists
     if client.user:
@@ -368,8 +368,8 @@ async def discharge_client(
         )
 
     client.status = "discharged"
-    client.discharge_date = discharge_date or datetime.utcnow().date()
-    client.updated_at = datetime.utcnow()
+    client.discharge_date = discharge_date or datetime.now(timezone.utc).date()
+    client.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # End current assignments
     current_assignments = db.query(ClientAssignment).filter(
@@ -379,7 +379,7 @@ async def discharge_client(
 
     for assignment in current_assignments:
         assignment.is_current = False
-        assignment.end_date = discharge_date or datetime.utcnow().date()
+        assignment.end_date = discharge_date or datetime.now(timezone.utc).date()
 
     db.commit()
     db.refresh(client)
@@ -418,9 +418,9 @@ async def readmit_client(
         )
 
     client.status = "active"
-    client.admission_date = admission_date or datetime.utcnow().date()
+    client.admission_date = admission_date or datetime.now(timezone.utc).date()
     client.discharge_date = None
-    client.updated_at = datetime.utcnow()
+    client.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Reactivate user account if exists
     if client.user:
@@ -521,7 +521,7 @@ async def update_client_contact(
     for field, value in update_data.items():
         setattr(contact, field, value)
 
-    contact.updated_at = datetime.utcnow()
+    contact.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
     db.refresh(contact)
@@ -617,8 +617,8 @@ async def update_client_permissions(
             # Clear custom permissions when not using custom permissions
             client.user.custom_permissions = []
 
-        client.user.updated_at = datetime.utcnow()
-        client.updated_at = datetime.utcnow()
+        client.user.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        client.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
 
         return ClientPermissionResponse(
@@ -726,7 +726,7 @@ async def update_location(
     for field, value in update_data.items():
         setattr(location, field, value)
 
-    location.updated_at = datetime.utcnow()
+    location.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
     db.refresh(location)
@@ -754,7 +754,7 @@ async def delete_location(
 
     # Soft delete by setting is_active to False
     location.is_active = False
-    location.updated_at = datetime.utcnow()
+    location.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
 
@@ -911,7 +911,7 @@ async def update_client_assignment(
     for field, value in update_data.items():
         setattr(assignment, field, value)
 
-    assignment.updated_at = datetime.utcnow()
+    assignment.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
     db.refresh(assignment)
@@ -945,8 +945,8 @@ async def end_client_assignment(
         )
 
     assignment.is_current = False
-    assignment.end_date = datetime.utcnow().date()
-    assignment.updated_at = datetime.utcnow()
+    assignment.end_date = datetime.now(timezone.utc).date()
+    assignment.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
 
@@ -983,7 +983,7 @@ async def get_currently_scheduled_clients(
         tz = pytz.UTC
 
     # Get current time in user's timezone
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     now_user_tz = pytz.UTC.localize(now_utc).astimezone(tz)
     current_date = now_user_tz.date()
     current_time = now_user_tz.time()

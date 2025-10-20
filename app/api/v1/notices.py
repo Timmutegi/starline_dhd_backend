@@ -4,7 +4,7 @@ Notices API Endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
@@ -29,10 +29,10 @@ def _check_if_user_should_see_notice(notice: Notice, user: User) -> bool:
     if not notice.is_active:
         return False
 
-    if notice.publish_date and notice.publish_date > datetime.utcnow():
+    if notice.publish_date and notice.publish_date > datetime.now(timezone.utc).replace(tzinfo=None):
         return False
 
-    if notice.expire_date and notice.expire_date < datetime.utcnow():
+    if notice.expire_date and notice.expire_date < datetime.now(timezone.utc).replace(tzinfo=None):
         return False
 
     # Check role targeting
@@ -265,7 +265,7 @@ def acknowledge_notice(
         db.add(receipt)
 
     # Mark as acknowledged
-    receipt.acknowledged_at = datetime.utcnow()
+    receipt.acknowledged_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
 
     return {"message": "Notice acknowledged"}

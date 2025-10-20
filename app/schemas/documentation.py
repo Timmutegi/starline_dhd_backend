@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from datetime import datetime, date
+from datetime import datetime, timezone, date
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
@@ -114,7 +114,7 @@ class IncidentFileInfo(BaseModel):
     id: str = Field(..., description="File ID")
     filename: str = Field(..., description="Original filename")
     size: int = Field(..., description="File size in bytes")
-    uploaded_at: datetime = Field(default_factory=datetime.utcnow, description="Upload timestamp")
+    uploaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None), description="Upload timestamp")
 
 class IncidentReportResponse(BaseModel):
     id: str

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, or_
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
@@ -37,7 +37,7 @@ async def get_notifications(
                 Notification.user_id == current_user.id,
                 or_(
                     Notification.expires_at.is_(None),
-                    Notification.expires_at > datetime.utcnow()
+                    Notification.expires_at > datetime.now(timezone.utc)
                 )
             )
         )
@@ -123,7 +123,7 @@ async def get_notification_stats(
                 Notification.user_id == current_user.id,
                 or_(
                     Notification.expires_at.is_(None),
-                    Notification.expires_at > datetime.utcnow()
+                    Notification.expires_at > datetime.now(timezone.utc)
                 )
             )
         )
@@ -189,7 +189,7 @@ async def mark_notification_as_read(
 
         if not notification.is_read:
             notification.is_read = True
-            notification.read_at = datetime.utcnow()
+            notification.read_at = datetime.now(timezone.utc)
             db.commit()
 
         return {"message": "Notification marked as read", "id": notification_id}
@@ -235,7 +235,7 @@ async def mark_all_notifications_as_read(
 
         updated_count = query.update({
             "is_read": True,
-            "read_at": datetime.utcnow()
+            "read_at": datetime.now(timezone.utc)
         })
 
         db.commit()
@@ -291,7 +291,7 @@ async def clear_old_notifications(
     Clear old notifications for the current user
     """
     try:
-        cutoff_date = datetime.utcnow() - timedelta(days=days_old)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
 
         deleted_count = db.query(Notification).filter(
             and_(

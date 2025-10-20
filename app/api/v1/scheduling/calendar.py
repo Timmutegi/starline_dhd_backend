@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, timezone, date, time, timedelta
 from app.core.database import get_db
 from app.models.user import User
 from app.models.staff import Staff
@@ -189,7 +189,7 @@ async def update_calendar_event(
         for field, value in update_data.items():
             setattr(event, field, value)
 
-        event.updated_at = datetime.utcnow()
+        event.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         db.refresh(event)
 

@@ -2,7 +2,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
-from datetime import datetime, date
+from datetime import datetime, timezone, date
 import uuid
 import enum
 
@@ -55,8 +55,8 @@ class Staff(Base):
 
     # Additional information
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     # Relationships
@@ -101,8 +101,8 @@ class StaffEmergencyContact(Base):
     email = Column(String(255), nullable=True)
     address = Column(Text, nullable=True)
     is_primary = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff", back_populates="emergency_contacts")
 
@@ -140,8 +140,8 @@ class BackgroundCheck(Base):
     result = Column(Enum(BackgroundCheckResult), nullable=True)
     notes = Column(Text, nullable=True)
     document_url = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff", back_populates="background_checks")
 
@@ -168,8 +168,8 @@ class StaffCertification(Base):
     document_url = Column(Text, nullable=True)
     verification_url = Column(Text, nullable=True)
     reminder_days_before = Column(Integer, default=30)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff", back_populates="certifications")
 
@@ -190,8 +190,8 @@ class TrainingProgram(Base):
     test_required = Column(Boolean, default=False)
     passing_score = Column(DECIMAL(5,2), nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     organization = relationship("Organization")
     training_records = relationship("TrainingRecord", back_populates="training_program", cascade="all, delete-orphan")
@@ -221,8 +221,8 @@ class TrainingRecord(Base):
     notes = Column(Text, nullable=True)
     certificate_url = Column(Text, nullable=True)
     next_due_date = Column(Date, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff", back_populates="training_records")
     training_program = relationship("TrainingProgram", back_populates="training_records")
@@ -245,8 +245,8 @@ class StaffSkill(Base):
     validated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     validated_date = Column(Date, nullable=True)
     expiry_date = Column(Date, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff", back_populates="skills")
     validator = relationship("User", foreign_keys=[validated_by])
@@ -279,8 +279,8 @@ class PerformanceReview(Base):
     development_plan = Column(Text, nullable=True)
     employee_comments = Column(Text, nullable=True)
     status = Column(Enum(ReviewStatus), default=ReviewStatus.DRAFT, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     acknowledged_date = Column(DateTime, nullable=True)
 
     staff = relationship("Staff", back_populates="performance_reviews")
@@ -311,8 +311,8 @@ class DisciplinaryAction(Base):
     follow_up_required = Column(Boolean, default=False)
     follow_up_date = Column(Date, nullable=True)
     document_url = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff", back_populates="disciplinary_actions")
     issuer = relationship("User", foreign_keys=[issued_by])
@@ -336,8 +336,8 @@ class StaffAssignment(Base):
     end_date = Column(Date, nullable=True)
     is_active = Column(Boolean, default=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff", back_populates="assignments")
     client = relationship("Client", foreign_keys=[client_id])
@@ -367,12 +367,12 @@ class TimeOffRequest(Base):
     total_hours = Column(DECIMAL(5,2), nullable=False)
     reason = Column(Text, nullable=True)
     status = Column(Enum(TimeOffStatus), default=TimeOffStatus.PENDING, nullable=False)
-    requested_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    requested_date = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False)
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     approved_date = Column(DateTime, nullable=True)
     denial_reason = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff", back_populates="time_off_requests")
     approver = relationship("User", foreign_keys=[approved_by])
@@ -389,7 +389,7 @@ class StaffPayroll(Base):
     tax_withholdings = Column(Text, nullable=True)  # JSON string
     deductions = Column(Text, nullable=True)  # JSON string
     benefits = Column(Text, nullable=True)  # JSON string
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("Staff", back_populates="payroll_info")

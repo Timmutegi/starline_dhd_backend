@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, backref
 from app.core.database import Base
 from app.core.audit_mixins import AuditMixin
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import enum
 
@@ -19,7 +19,7 @@ role_permissions = Table(
     Base.metadata,
     Column('role_id', UUID(as_uuid=True), ForeignKey('roles.id', ondelete="CASCADE"), primary_key=True),
     Column('permission_id', UUID(as_uuid=True), ForeignKey('permissions.id', ondelete="CASCADE"), primary_key=True),
-    Column('created_at', DateTime, default=datetime.utcnow)
+    Column('created_at', DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 )
 
 # User-specific permissions (overrides role permissions when use_custom_permissions is True)
@@ -28,7 +28,7 @@ user_permissions = Table(
     Base.metadata,
     Column('user_id', UUID(as_uuid=True), ForeignKey('users.id', ondelete="CASCADE"), primary_key=True),
     Column('permission_id', UUID(as_uuid=True), ForeignKey('permissions.id', ondelete="CASCADE"), primary_key=True),
-    Column('created_at', DateTime, default=datetime.utcnow)
+    Column('created_at', DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 )
 
 class Organization(Base):
@@ -46,8 +46,8 @@ class Organization(Base):
     timezone = Column(String(50), default="Africa/Nairobi")
     settings = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     users = relationship("User", back_populates="organization", cascade="all, delete-orphan")
     roles = relationship("Role", back_populates="organization", cascade="all, delete-orphan")
@@ -81,10 +81,10 @@ class User(AuditMixin, Base):
     failed_login_attempts = Column(Integer, default=0)
     lockout_until = Column(DateTime, nullable=True)
     must_change_password = Column(Boolean, default=False)
-    password_changed_at = Column(DateTime, default=datetime.utcnow)
+    password_changed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     use_custom_permissions = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     organization = relationship("Organization", back_populates="users")
     role = relationship("Role", back_populates="users")
@@ -111,8 +111,8 @@ class Role(Base):
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
     is_system_role = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     organization = relationship("Organization", back_populates="roles")
     users = relationship("User", back_populates="role")
@@ -125,7 +125,7 @@ class Permission(Base):
     resource = Column(String(100), nullable=False)
     action = Column(String(50), nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
@@ -139,7 +139,7 @@ class UserSession(Base):
     device_name = Column(String(255), nullable=True)
     is_remember_me = Column(Boolean, default=False)
     expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     revoked_at = Column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="sessions")
@@ -155,7 +155,7 @@ class AuthAuditLog(Base):
     meta_data = Column(Text, nullable=True)
     success = Column(Boolean, default=True)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     user = relationship("User", back_populates="audit_logs")
 
@@ -165,6 +165,6 @@ class PasswordHistory(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     password_hash = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     user = relationship("User", back_populates="password_history")

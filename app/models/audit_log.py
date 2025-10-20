@@ -5,7 +5,7 @@ Tracks all system activities, PHI access, and maintains compliance trails
 from sqlalchemy import Column, String, Text, DateTime, Boolean, Integer, ForeignKey, Enum, Index, CheckConstraint, JSON
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import enum
 from app.core.database import Base
@@ -75,7 +75,7 @@ class AuditLog(Base):
     duration_ms = Column(Integer, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False)
 
     # Relationships
     user = relationship("User", foreign_keys=[user_id], backref="audit_activities")
@@ -114,7 +114,7 @@ class AuditExport(Base):
     external_audit_ref = Column(String(100), nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     expires_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -155,8 +155,8 @@ class AuditSetting(Base):
     log_api_responses = Column(Boolean, default=False)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     organization = relationship("Organization", foreign_keys=[organization_id], backref="audit_setting")
@@ -184,7 +184,7 @@ class ComplianceViolation(Base):
 
     # Status tracking
     status = Column(String(20), default="open")  # open, investigating, resolved, false_positive
-    detected_at = Column(DateTime, default=datetime.utcnow)
+    detected_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     acknowledged_at = Column(DateTime, nullable=True)
     resolved_at = Column(DateTime, nullable=True)
 

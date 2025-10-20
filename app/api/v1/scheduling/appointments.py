@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, timezone, date, time, timedelta
 from app.core.database import get_db
 from app.models.user import User
 from app.models.staff import Staff
@@ -289,7 +289,7 @@ async def update_appointment(
         for field, value in update_data.items():
             setattr(appointment, field, value)
 
-        appointment.updated_at = datetime.utcnow()
+        appointment.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         db.refresh(appointment)
 
@@ -333,7 +333,7 @@ async def cancel_appointment(
     if reason:
         appointment.notes = f"{appointment.notes or ''}\n\nCancelled: {reason}".strip()
 
-    appointment.updated_at = datetime.utcnow()
+    appointment.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
 
     return MessageResponse(
@@ -502,7 +502,7 @@ async def update_recurring_appointment(
         for field, value in update_data.items():
             setattr(recurring, field, value)
 
-        recurring.updated_at = datetime.utcnow()
+        recurring.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         db.refresh(recurring)
 

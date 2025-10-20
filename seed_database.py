@@ -8,7 +8,7 @@ import os
 import sys
 import requests
 import json
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 from typing import Dict, Optional
 from dotenv import load_dotenv
 
@@ -615,8 +615,6 @@ def seed_notices(token: str, org_id: str, admin_user_id: str):
     """Seed notices/announcements"""
     print_header("SEEDING NOTICES")
 
-    from datetime import datetime, timedelta
-
     notices_data = [
         {
             "title": "Updated Safety Protocols",
@@ -625,7 +623,7 @@ def seed_notices(token: str, org_id: str, admin_user_id: str):
             "priority": "high",
             "category": "safety",
             "is_active": True,
-            "publish_date": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+            "publish_date": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
             "requires_acknowledgment": True
         },
         {
@@ -635,7 +633,7 @@ def seed_notices(token: str, org_id: str, admin_user_id: str):
             "priority": "medium",
             "category": "system",
             "is_active": True,
-            "publish_date": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+            "publish_date": (datetime.now(timezone.utc) - timedelta(days=3)).isoformat(),
             "requires_acknowledgment": False
         },
         {
@@ -645,7 +643,7 @@ def seed_notices(token: str, org_id: str, admin_user_id: str):
             "priority": "low",
             "category": "general",
             "is_active": True,
-            "publish_date": (datetime.utcnow() - timedelta(days=5)).isoformat(),
+            "publish_date": (datetime.now(timezone.utc) - timedelta(days=5)).isoformat(),
             "requires_acknowledgment": False
         },
         {
@@ -655,7 +653,7 @@ def seed_notices(token: str, org_id: str, admin_user_id: str):
             "priority": "high",
             "category": "training",
             "is_active": True,
-            "publish_date": datetime.utcnow().isoformat(),
+            "publish_date": datetime.now(timezone.utc).isoformat(),
             "requires_acknowledgment": True
         },
         {
@@ -665,7 +663,7 @@ def seed_notices(token: str, org_id: str, admin_user_id: str):
             "priority": "medium",
             "category": "policy",
             "is_active": True,
-            "publish_date": (datetime.utcnow() - timedelta(days=2)).isoformat(),
+            "publish_date": (datetime.now(timezone.utc) - timedelta(days=2)).isoformat(),
             "requires_acknowledgment": True
         }
     ]
@@ -711,8 +709,6 @@ def seed_notices(token: str, org_id: str, admin_user_id: str):
 def seed_activities(token: str, clients: list, staff_member: dict):
     """Seed activity logs for clients"""
     print_header("SEEDING ACTIVITIES")
-
-    from datetime import datetime, timedelta
 
     if not clients or not staff_member:
         print_warning("No clients or staff member found. Skipping activities.")
@@ -787,7 +783,7 @@ def seed_activities(token: str, clients: list, staff_member: dict):
     created_activities = []
 
     try:
-        today = datetime.utcnow()
+        today = datetime.now(timezone.utc)
 
         # Create activities for each client
         for i, client in enumerate(clients[:4]):  # First 4 clients
@@ -1554,13 +1550,14 @@ def main():
     print_success(f"✓ Created {len(meal_logs)} meal logs")
     print_success(f"✓ Created {len(incidents)} incident reports")
 
-    # Seed Training Courses (login as Tim)
+    # Seed Training Courses and Activities (login as Tim)
     tim_staff = staff_members[0] if staff_members else None
     tim_user_id = tim_staff['user']['id'] if tim_staff else None
     tim_password = tim_staff.get('temporary_password') if tim_staff else None
+    tim_token = None  # Initialize tim_token
 
     if tim_user_id and admin_user_id and org_id and tim_password:
-        # Login as Tim to create his training progress
+        # Login as Tim to create his training progress and activities
         tim_token_response = requests.post(
             f"{BASE_URL}/auth/login",
             json={"email": "tim@kaziflex.com", "password": tim_password}
@@ -1585,13 +1582,8 @@ def main():
         print_warning("Missing required data for notices seeding")
         notices = []
 
-    # Seed Activities (as admin/Tim)
-    if clients and staff_members:
-        activities = seed_activities(token, clients, staff_members[0])
-        print_success(f"✓ Created {len(activities)} activity logs")
-    else:
-        print_warning("Missing required data for activities seeding")
-        activities = []
+    # Activities will be added manually through the UI
+    print_info("\n📝 Activities can be added manually through the UI")
 
     # Display credentials table for clients
     if clients:
