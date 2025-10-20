@@ -1317,7 +1317,7 @@ def main():
             today_shift_data = {
                 "schedule_id": schedule["id"],
                 "staff_id": tim_staff["id"],
-                "client_id": clients[0]["id"],
+                "client_id": clients[0]["id"],  # IMPORTANT: Assign client to shift for scheduled clients endpoint
                 "shift_date": str(date.today()),
                 "start_time": f"{start_hour:02d}:00:00",
                 "end_time": f"{end_hour:02d}:00:00",
@@ -1328,7 +1328,7 @@ def main():
             today_shift = create_shift(token, today_shift_data)
             if today_shift:
                 shifts.append(today_shift)
-                print_success(f"Created today's shift for {tim_staff['full_name']}")
+                print_success(f"Created today's shift for {tim_staff['full_name']} → Client: {clients[0]['first_name']} {clients[0]['last_name']}")
 
                 # Clock in to today's shift
                 clock_in_result = clock_in(token, today_shift["id"])
@@ -1349,7 +1349,7 @@ def main():
                 shift_data = {
                     "schedule_id": schedule["id"],
                     "staff_id": tim_staff["id"],
-                    "client_id": clients[client_index]["id"],
+                    "client_id": clients[client_index]["id"],  # IMPORTANT: Assign client to shift for scheduled clients endpoint
                     "shift_date": str(shift_date),
                     "start_time": "08:00:00",
                     "end_time": "16:00:00",
@@ -1360,6 +1360,9 @@ def main():
                 shift = create_shift(token, shift_data)
                 if shift:
                     shifts.append(shift)
+                    day_name = shift_date.strftime("%a %m/%d")
+                    status_emoji = "📅" if day_offset > 0 else "✓"
+                    print_success(f"  {status_emoji} {day_name}: {tim_staff['full_name']} → {clients[client_index]['first_name']} {clients[client_index]['last_name']}")
 
     print_success(f"\nCreated {len(schedules)} schedules and {len(shifts)} shifts")
 

@@ -47,6 +47,8 @@ async def get_current_shift(
     current_user: User = Depends(get_current_user)
 ):
     """Get the current active shift for the logged-in DSP staff member."""
+    import pytz
+    from app.models.user import Organization
 
     # Get staff record for current user
     staff = db.query(Staff).filter(
@@ -60,8 +62,27 @@ async def get_current_shift(
             detail="Staff record not found for current user"
         )
 
+    # Get user's timezone (user timezone > organization timezone > UTC)
+    # Safely get organization timezone
+    org_timezone = None
+    if current_user.organization_id:
+        organization = db.query(Organization).filter(
+            Organization.id == current_user.organization_id
+        ).first()
+        if organization:
+            org_timezone = organization.timezone
+
+    user_timezone_str = current_user.timezone or org_timezone or "UTC"
+    try:
+        user_timezone = pytz.timezone(user_timezone_str)
+    except:
+        user_timezone = pytz.UTC
+
+    # Get today's date in user's timezone
+    now_user_tz = datetime.now(timezone.utc).replace(tzinfo=pytz.UTC).astimezone(user_timezone)
+    today = now_user_tz.date()
+
     # Get the current active shift (today's shift that is in progress or scheduled for today)
-    today = date.today()
     current_shift = db.query(Shift).options(
         joinedload(Shift.schedule)
     ).filter(
@@ -151,9 +172,21 @@ async def get_current_shift(
 
     time_on_shift = None
     clock_in_time = None
+    clock_in_time_formatted = None
     if clock_in_entry:
-        clock_in_time = clock_in_entry.entry_datetime
-        elapsed = datetime.now(timezone.utc) - clock_in_entry.entry_datetime
+        # Convert UTC clock in time to user's timezone
+        # Ensure entry_datetime is timezone-aware (assume it's stored as UTC)
+        if clock_in_entry.entry_datetime.tzinfo is None:
+            clock_in_time_utc = clock_in_entry.entry_datetime.replace(tzinfo=pytz.UTC)
+        else:
+            clock_in_time_utc = clock_in_entry.entry_datetime
+
+        clock_in_time = clock_in_time_utc.astimezone(user_timezone)
+        clock_in_time_formatted = clock_in_time.strftime("%I:%M %p")
+
+        # Calculate time elapsed - ensure both datetimes are timezone-aware
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=pytz.UTC)
+        elapsed = now_utc - clock_in_time_utc
         hours = int(elapsed.total_seconds() // 3600)
         minutes = int((elapsed.total_seconds() % 3600) // 60)
         time_on_shift = f"{hours}h {minutes}m"
@@ -243,7 +276,7 @@ async def get_current_shift(
         },
         "time_tracking": {
             "time_on_shift": time_on_shift,
-            "clock_in_time": clock_in_time.strftime("%I:%M %p") if clock_in_time else None,
+            "clock_in_time": clock_in_time_formatted,
             "is_clocked_in": clock_in_time is not None
         },
         "tasks": {

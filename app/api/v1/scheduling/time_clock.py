@@ -127,6 +127,8 @@ async def clock_out(
 ):
     """Clock out from a shift."""
 
+    logger.info(f"Clock-out request received: shift_id={clock_out_data.shift_id}, staff_id={clock_out_data.staff_id}")
+
     # Get staff_id - use provided value or derive from current user
     staff_id = clock_out_data.staff_id
     if not staff_id:
@@ -242,9 +244,11 @@ async def clock_out(
                     missing_docs.append(doc_type)
 
             if missing_docs:
+                error_message = f"Cannot clock out. Please complete the following required documentation: {', '.join(missing_docs)}"
+                logger.warning(f"Clock-out blocked for staff {staff_id}: {error_message}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Cannot clock out. Please complete the following required documentation: {', '.join(missing_docs)}"
+                    detail=error_message
                 )
 
     try:
@@ -562,6 +566,12 @@ async def calculate_overtime(
     """Calculate and record overtime for a completed shift."""
 
     try:
+        # Ensure both datetimes are timezone-naive for calculation
+        if clock_in_time.tzinfo is not None:
+            clock_in_time = clock_in_time.replace(tzinfo=None)
+        if clock_out_time.tzinfo is not None:
+            clock_out_time = clock_out_time.replace(tzinfo=None)
+
         # Get the week start date (Monday)
         shift_date = clock_in_time.date()
         days_since_monday = shift_date.weekday()
