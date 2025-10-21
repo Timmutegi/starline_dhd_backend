@@ -3,139 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Failed Login Alert - Starline</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Failed Login Alert - DHD</title>
     <style>
-        .container {
-            max-width: 650px;
-            margin: 0 auto;
-            font-family: "Segoe UI", Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji" ;
-        }
-        .header {
-            background-color: #D97706;
-            height: 150px;
-            line-height: 150px;
-            padding-right: 50px;
-            padding-bottom: 20px;
-            color: white;
-        }
-        .header h1 {
-            text-align: center;
-        }
-        .content {
-            min-height: 100px;
-        }
-        .footer {
-            height: 100px;
-            background-color: #4F46E5;
-            padding-top: 30px;
-            padding-bottom: 30px;
-            color: white;
-            font-size: 13px;
-            line-height: 20px;
-        }
-        .footer p {
-            margin-top: 0px;
-            margin-bottom: 0px;
-            text-align: center;
-        }
-        .footer a {
-            color: white;
-        }
-        .warning-box {
-            background-color: #FEF3C7;
-            border: 2px solid #FCD34D;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-        .warning-title {
-            color: #92400E;
-            font-weight: bold;
-            font-size: 18px;
-            margin-bottom: 10px;
-        }
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; }
+        .email-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); padding: 40px 20px; text-align: center; }
+        .logo { font-size: 48px; font-weight: 800; color: #ffffff; letter-spacing: -1px; margin: 0; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+        .subtitle { color: rgba(255, 255, 255, 0.9); font-size: 13px; font-weight: 500; letter-spacing: 2px; margin-top: 8px; text-transform: uppercase; }
+        .content { padding: 48px 32px; }
+        .title { font-size: 28px; font-weight: 700; color: #111827; margin: 0 0 16px 0; text-align: center; }
+        .greeting { font-size: 16px; color: #374151; margin-bottom: 24px; line-height: 1.6; }
+        .message { font-size: 15px; color: #6b7280; line-height: 1.7; margin-bottom: 32px; }
+        .warning-box { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #f59e0b; border-radius: 0px; padding: 32px; margin: 32px 0; }
+        .warning-title { font-size: 18px; font-weight: 700; color: #92400e; margin: 0 0 16px 0; }
+        .warning-box p { margin: 8px 0; font-size: 14px; color: #78350f; }
+        .info-box { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-left: 4px solid #3b82f6; padding: 20px; border-radius: 0px; margin: 24px 0; }
+        .info-box ul { margin: 8px 0; padding-left: 20px; font-size: 14px; color: #1e3a8a; line-height: 1.6; }
+        .alert-info { background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border-left: 4px solid #ef4444; padding: 20px; border-radius: 0px; margin: 24px 0; font-size: 14px; color: #991b1b; }
+        .button-container { text-align: center; margin: 32px 0; }
+        .action-button { display: inline-block; background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); color: #ffffff !important; text-decoration: none; padding: 16px 48px; border-radius: 0px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(217, 119, 6, 0.2); margin: 0 8px; }
+        .unlock-button { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+        .footer { background: #111827; padding: 40px 32px; text-align: center; }
+        .footer-brand { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 20px; }
+        .footer-logo-letter { font-size: 28px; font-weight: 800; }
+        .footer-logo-d { color: #ffffff; }
+        .footer-logo-h { color: #4F46E5; }
+        .footer-tagline { font-size: 11px; color: #9ca3af; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 8px; }
+        .footer-text { color: #9ca3af; font-size: 13px; margin: 12px 0; }
+        .footer-link { color: #60a5fa; text-decoration: none; }
+        .footer-compliance { display: inline-block; background: rgba(79, 70, 229, 0.1); color: #818cf8; padding: 6px 16px; border-radius: 0px; font-size: 11px; font-weight: 600; margin-top: 16px; }
     </style>
 </head>
 <body>
-    <div class="wrapper">
-        <div class="container">
-            <div class="header">
-                <h1>⚠️ Login Alert</h1>
+    <div class="email-container">
+        <div class="header">
+            <h1 class="logo">DHD</h1>
+            <div class="subtitle">Security Alert</div>
+        </div>
+        <div class="content">
+            <h2 class="title">Failed Login Attempt Alert</h2>
+            <div class="warning-box">
+                <div class="warning-title">Multiple Failed Login Attempts Detected</div>
+                <p><strong>Target Account:</strong> {{target_email}}</p>
+                <p><strong>Failed Attempts:</strong> {{attempt_count}} in the last {{time_window}} minutes</p>
+                <p><strong>IP Address:</strong> {{ip_address}}</p>
+                <p><strong>Location:</strong> {{location}} (approximate)</p>
+                <p><strong>User Agent:</strong> {{user_agent}}</p>
+                <p><strong>First Attempt:</strong> {{first_attempt_time}}</p>
+                <p><strong>Last Attempt:</strong> {{last_attempt_time}}</p>
             </div>
-            <div class="content">
-                <div style="max-width: 560px; padding: 20px; background: #ffffff; border-radius: 5px; margin: 40px auto; font-family: Open Sans,Helvetica,Arial; font-size: 15px; color: #666;">
-                    <div style="color: #444444; font-weight: normal;">
-                        <div style="text-align: center; font-weight: 600; font-size: 24px; padding: 10px 0; border-bottom: solid 3px #eeeeee;">Failed Login Attempt Alert</div>
-                        <div style="clear: both;"> </div>
-                    </div>
-
-                    <div class="warning-box">
-                        <div class="warning-title">Multiple Failed Login Attempts Detected</div>
-                        <p><strong>Target Account:</strong> {{target_email}}</p>
-                        <p><strong>Failed Attempts:</strong> {{attempt_count}} in the last {{time_window}} minutes</p>
-                        <p><strong>IP Address:</strong> {{ip_address}}</p>
-                        <p><strong>Location:</strong> {{location}} (approximate)</p>
-                        <p><strong>User Agent:</strong> {{user_agent}}</p>
-                        <p><strong>First Attempt:</strong> {{first_attempt_time}}</p>
-                        <p><strong>Last Attempt:</strong> {{last_attempt_time}}</p>
-                    </div>
-
-                    <div style="padding: 0 30px 30px 30px; border-bottom: 3px solid #eeeeee;">
-                        <div style="font-size: 15px; line-height: 25px;">
-                            <strong>Security Status:</strong><br>
-                            {% if account_locked %}
-                            <span style="color: #DC2626; font-weight: bold;">🔒 Account has been temporarily locked for security.</span>
-                            <p>The account will be automatically unlocked in {{lockout_duration}} minutes, or an administrator can unlock it manually.</p>
-                            {% else %}
-                            <span style="color: #D97706; font-weight: bold;">⚠️ Account is still accessible but being monitored.</span>
-                            <p>If this continues, the account will be automatically locked for security.</p>
-                            {% endif %}
-                        </div>
-
-                        <div style="background-color: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 4px; padding: 15px; margin: 20px 0;">
-                            <strong>Recommended Actions:</strong>
-                            <ul style="margin: 10px 0; padding-left: 20px;">
-                                <li>Contact the user to verify if they are attempting to log in</li>
-                                <li>If the user is not attempting to log in, consider this a potential security threat</li>
-                                <li>Review IP address for suspicious activity patterns</li>
-                                <li>Consider temporarily blocking the IP address if threats persist</li>
-                                <li>Advise the user to change their password if compromised</li>
-                            </ul>
-                        </div>
-
-                        {% if similar_attempts %}
-                        <div style="background-color: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; padding: 15px; margin: 20px 0;">
-                            <strong>⚠️ Additional Concern:</strong><br>
-                            Similar failed login patterns detected for {{similar_attempts}} other accounts from this IP address.
-                            This may indicate a coordinated attack.
-                        </div>
-                        {% endif %}
-
-                        <div style="padding: 10px 0 20px 0; text-align: center;">
-                            <a style="background: #D97706; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px; margin-right: 10px;" href="{{security_dashboard_url}}">View Security Dashboard</a>
-                            {% if account_locked %}
-                            <a style="background: #059669; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 3px; letter-spacing: 0.3px;" href="{{unlock_account_url}}">Unlock Account</a>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <div style="color: #999; padding: 20px 30px; font-size: 14px;">
-                        <div><strong>This is an automated security alert.</strong></div>
-                        <div>This notification is sent to help protect against unauthorized access attempts.
-                             All login attempts are monitored for security purposes.</div>
-                        <div style="margin-top: 15px;">
-                            <strong>Alert ID:</strong> {{alert_id}}<br>
-                            <strong>Audit Log Reference:</strong> {{audit_log_ids}}
-                        </div>
-                        <div style="margin-top: 15px;">The <a style="color: #4F46E5; text-decoration: none;" href="{{frontend_url}}">Starline</a> Security Team</div>
-                    </div>
-                </div>
+            <div class="message"><strong>Security Status:</strong><br>{% if account_locked %}<span style="color: #dc2626; font-weight: 700;">🔒 Account has been temporarily locked for security.</span><br>The account will be automatically unlocked in {{lockout_duration}} minutes, or an administrator can unlock it manually.{% else %}<span style="color: #d97706; font-weight: 700;">⚠️ Account is still accessible but being monitored.</span><br>If this continues, the account will be automatically locked for security.{% endif %}</div>
+            <div class="info-box">
+                <strong>Recommended Actions:</strong>
+                <ul>
+                    <li>Contact the user to verify if they are attempting to log in</li>
+                    <li>If the user is not attempting to log in, consider this a potential security threat</li>
+                    <li>Review IP address for suspicious activity patterns</li>
+                    <li>Consider temporarily blocking the IP address if threats persist</li>
+                    <li>Advise the user to change their password if compromised</li>
+                </ul>
             </div>
-            <div class="footer">
-                <p><strong><a href="mailto:{{contact_email}}">{{contact_email}}</a></strong></p>
-                <p><strong>Starline Security Team</strong></p>
-                <p><strong>Protecting your accounts 24/7</strong></p>
+            {% if similar_attempts %}
+            <div class="alert-info"><strong>⚠️ Additional Concern:</strong><br>Similar failed login patterns detected for {{similar_attempts}} other accounts from this IP address. This may indicate a coordinated attack.</div>
+            {% endif %}
+            <div class="button-container">
+                <a class="action-button" href="{{security_dashboard_url}}">View Security Dashboard</a>
+                {% if account_locked %}<a class="action-button unlock-button" href="{{unlock_account_url}}">Unlock Account</a>{% endif %}
             </div>
+            <div class="message" style="text-align: center; font-size: 14px;"><strong>This is an automated security alert.</strong><br>All login attempts are monitored for security purposes.<br><strong>Alert ID:</strong> {{alert_id}}<br><strong>Audit Log Reference:</strong> {{audit_log_ids}}</div>
+            <div class="message" style="margin-top: 32px; font-size: 14px;"><strong>The DHD Security Team</strong></div>
+        </div>
+        <div class="footer">
+            <div class="footer-brand">
+                <span class="footer-logo-letter footer-logo-d">D</span>
+                <span class="footer-logo-letter footer-logo-h">H</span>
+                <span class="footer-logo-letter footer-logo-d">D</span>
+            </div>
+            <div class="footer-tagline">Daily Healthcare Docs</div>
+            <p class="footer-text">Need help? Contact us at<br><a href="mailto:{{contact_email}}" class="footer-link">{{contact_email}}</a></p>
+            <p class="footer-text" style="font-size: 11px; margin-top: 20px;">This email was sent to you regarding your DHD account.<br><a href="{{frontend_url}}" class="footer-link">Visit DHD</a></p>
+            <div class="footer-compliance">🔒 HIPAA COMPLIANT</div>
+            <p class="footer-text" style="font-size: 11px; margin-top: 20px; color: #6b7280;">© 2025 Daily Healthcare Docs (DHD). All rights reserved.<br>Empowering quality care, one document at a time.</p>
         </div>
     </div>
 </body>
