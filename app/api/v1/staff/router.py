@@ -687,10 +687,26 @@ async def get_my_assigned_clients(
             StaffAssignment.is_active == True
         ).first()
 
-        # Add location information
-        # Location relationship not yet implemented - set to None for now
-        response.location_name = None
-        response.location_address = None
+        # Add location information from client assignments
+        from app.models.client import ClientAssignment, ClientLocation
+        current_assignment = db.query(ClientAssignment).filter(
+            ClientAssignment.client_id == client.id,
+            ClientAssignment.is_current == True
+        ).first()
+
+        if current_assignment and current_assignment.location_id:
+            location = db.query(ClientLocation).filter(
+                ClientLocation.id == current_assignment.location_id
+            ).first()
+            if location:
+                response.location_name = location.name
+                response.location_address = location.address
+            else:
+                response.location_name = None
+                response.location_address = None
+        else:
+            response.location_name = None
+            response.location_address = None
 
         # Add reporting schedule (days of week)
         # This would come from shift assignments - for now use a placeholder
@@ -721,12 +737,176 @@ async def get_my_assigned_clients(
 
         response.reporting_days = list(reporting_days) if reporting_days else []
 
-        # Last interaction will be None for now - can be enhanced with a separate optimized query
-        response.last_interaction = None
+        # Get last interaction timestamp from most recent documentation
+        from app.models.vitals_log import VitalsLog
+        from app.models.meal_log import MealLog
+        from app.models.activity_log import ActivityLog
+        from app.models.shift_note import ShiftNote
+        from app.models.incident_report import IncidentReport
+        from sqlalchemy import func
+
+        # Query most recent timestamp from each documentation type
+        latest_timestamps = []
+
+        # Vitals
+        latest_vital = db.query(func.max(VitalsLog.recorded_at)).filter(
+            VitalsLog.client_id == client.id
+        ).scalar()
+        if latest_vital:
+            latest_timestamps.append(latest_vital)
+
+        # Meals
+        latest_meal = db.query(func.max(MealLog.meal_date)).filter(
+            MealLog.client_id == client.id
+        ).scalar()
+        if latest_meal:
+            # Convert date to datetime for comparison
+            from datetime import datetime, time
+            if isinstance(latest_meal, datetime):
+                latest_timestamps.append(latest_meal)
+            else:
+                latest_timestamps.append(datetime.combine(latest_meal, time.min))
+
+        # Activities
+        latest_activity = db.query(func.max(ActivityLog.activity_date)).filter(
+            ActivityLog.client_id == client.id
+        ).scalar()
+        if latest_activity:
+            from datetime import datetime, time
+            if isinstance(latest_activity, datetime):
+                latest_timestamps.append(latest_activity)
+            else:
+                latest_timestamps.append(datetime.combine(latest_activity, time.min))
+
+        # Shift Notes
+        latest_shift_note = db.query(func.max(ShiftNote.created_at)).filter(
+            ShiftNote.client_id == client.id
+        ).scalar()
+        if latest_shift_note:
+            latest_timestamps.append(latest_shift_note)
+
+        # Incidents
+        latest_incident = db.query(func.max(IncidentReport.created_at)).filter(
+            IncidentReport.client_id == client.id
+        ).scalar()
+        if latest_incident:
+            latest_timestamps.append(latest_incident)
+
+        # Get the most recent timestamp
+        response.last_interaction = max(latest_timestamps) if latest_timestamps else None
 
         client_responses.append(response)
 
     return client_responses
+
+
+@router.get("/me/clients/{client_id}", response_model=ClientResponse)
+async def get_assigned_client_by_id(
+    client_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get details of a specific client assigned to the currently logged-in staff member"""
+
+    # Get staff record for current user
+    staff = db.query(Staff).filter(
+        Staff.user_id == current_user.id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff record not found for current user"
+        )
+
+    # Check if client is assigned to this staff member
+    assignment = db.query(StaffAssignment).filter(
+        StaffAssignment.staff_id == staff.id,
+        StaffAssignment.client_id == client_id,
+        StaffAssignment.is_active == True
+    ).first()
+
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found or not assigned to you"
+        )
+
+    # Get client details with relationships
+    from sqlalchemy.orm import joinedload
+    client = db.query(Client).filter(
+        Client.id == client_id,
+        Client.organization_id == current_user.organization_id
+    ).options(
+        joinedload(Client.user),
+        joinedload(Client.contacts),
+        joinedload(Client.assignments),
+        joinedload(Client.care_plans),
+        joinedload(Client.medications),
+        joinedload(Client.insurance_policies)
+    ).first()
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found"
+        )
+
+    # Build response
+    response = ClientResponse.model_validate(client)
+    if client.user:
+        response.email = client.user.email
+    response.full_name = client.full_name
+
+    # Add location information from client assignments
+    from app.models.client import ClientAssignment as ClientAssignmentModel, ClientLocation
+    current_assignment = db.query(ClientAssignmentModel).filter(
+        ClientAssignmentModel.client_id == client.id,
+        ClientAssignmentModel.is_current == True
+    ).first()
+
+    if current_assignment and current_assignment.location_id:
+        location = db.query(ClientLocation).filter(
+            ClientLocation.id == current_assignment.location_id
+        ).first()
+        if location:
+            response.location_name = location.name
+            response.location_address = location.address
+        else:
+            response.location_name = None
+            response.location_address = None
+    else:
+        response.location_name = None
+        response.location_address = None
+
+    # Add reporting schedule from shifts
+    from app.models.scheduling import Shift, ShiftStatus
+    from datetime import datetime, timedelta
+
+    start_date = datetime.now().date() - timedelta(days=7)
+    end_date = datetime.now().date() + timedelta(days=7)
+
+    shifts = db.query(Shift).filter(
+        Shift.staff_id == staff.id,
+        Shift.client_id == client_id,  # Filter by specific client
+        Shift.shift_date >= start_date,
+        Shift.shift_date <= end_date,
+        Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.IN_PROGRESS, ShiftStatus.COMPLETED])
+    ).all()
+
+    # Extract unique days of week from shifts
+    reporting_days = set()
+    for shift in shifts:
+        day_of_week = shift.shift_date.weekday()  # 0=Monday, 6=Sunday
+        day_names = ['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su']
+        reporting_days.add(day_names[day_of_week])
+
+    response.reporting_days = list(reporting_days) if reporting_days else []
+    response.last_interaction = None
+
+    return response
+
 
 @router.post("/{staff_id}/assignments", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
 async def assign_staff_to_client(

@@ -117,6 +117,7 @@ class ShiftBase(BaseModel):
 class ShiftCreate(ShiftBase):
     schedule_id: UUID
     staff_id: UUID
+    client_id: Optional[UUID] = None  # Primary client for this shift
     location_id: Optional[UUID] = None
 
 class ShiftUpdate(BaseModel):

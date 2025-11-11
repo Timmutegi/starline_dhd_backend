@@ -1304,39 +1304,68 @@ def main():
             schedules.append(schedule)
             print_success(f"Created schedule for {tim_staff['full_name']}")
 
-            # Today's shift (active) - Set times to span current time
+            # Define shift time slots throughout the day
             from datetime import datetime as dt
             current_time = dt.now().time()
             current_hour = current_time.hour
 
-            # Set start time to 2 hours before current time (or 8 AM if before 10 AM)
-            start_hour = max(8, current_hour - 2)
-            # Set end time to 6 hours after current time (or 7 PM at the latest)
-            end_hour = min(19, current_hour + 6)
+            # Time slots for shifts (allows testing at any time of day)
+            shift_slots = [
+                {"name": "Early Morning", "start": "06:00:00", "end": "10:00:00"},
+                {"name": "Late Morning", "start": "10:00:00", "end": "14:00:00"},
+                {"name": "Afternoon", "start": "14:00:00", "end": "18:00:00"},
+                {"name": "Evening", "start": "18:00:00", "end": "22:00:00"}
+            ]
 
-            today_shift_data = {
-                "schedule_id": schedule["id"],
-                "staff_id": tim_staff["id"],
-                "client_id": clients[0]["id"],  # IMPORTANT: Assign client to shift for scheduled clients endpoint
-                "shift_date": str(date.today()),
-                "start_time": f"{start_hour:02d}:00:00",
-                "end_time": f"{end_hour:02d}:00:00",
-                "shift_type": "regular",
-                "status": "scheduled",
-                "required_documentation": ["vitals_log", "shift_note", "meal_log"]  # Required docs for clock-out
-            }
-            today_shift = create_shift(token, today_shift_data)
-            if today_shift:
-                shifts.append(today_shift)
-                print_success(f"Created today's shift for {tim_staff['full_name']} → Client: {clients[0]['first_name']} {clients[0]['last_name']}")
+            # Create multiple shifts for today covering different time periods
+            print_success(f"Creating shifts for today ({date.today()}):")
+            active_shift_id = None
 
-                # Clock in to today's shift
-                clock_in_result = clock_in(token, today_shift["id"])
+            for idx, slot in enumerate(shift_slots):
+                # Determine which client for this slot (rotate through clients)
+                client_idx = idx % len(clients)
+                client = clients[client_idx]
+
+                # Parse start and end times
+                start_hour = int(slot["start"].split(":")[0])
+                end_hour = int(slot["end"].split(":")[0])
+
+                # Check if current time falls within this shift
+                is_active = start_hour <= current_hour < end_hour
+
+                today_shift_data = {
+                    "schedule_id": schedule["id"],
+                    "staff_id": tim_staff["id"],
+                    "client_id": client["id"],
+                    "shift_date": str(date.today()),
+                    "start_time": slot["start"],
+                    "end_time": slot["end"],
+                    "shift_type": "regular",
+                    "status": "scheduled",
+                    "required_documentation": ["vitals_log", "shift_note", "meal_log"]
+                }
+
+                shift = create_shift(token, today_shift_data)
+                if shift:
+                    shifts.append(shift)
+                    status_icon = "🟢 ACTIVE" if is_active else "⚪"
+                    print_success(f"  {status_icon} {slot['name']} ({slot['start']}-{slot['end']}): {client['first_name']} {client['last_name']}")
+
+                    # Track active shift for clock-in
+                    if is_active:
+                        active_shift_id = shift["id"]
+
+            # Clock in to the active shift if one exists
+            if active_shift_id:
+                clock_in_result = clock_in(token, active_shift_id)
                 if clock_in_result:
-                    print_success(f"Clocked in {tim_staff['full_name']} for today's shift")
+                    print_success(f"✓ Clocked in {tim_staff['full_name']} to active shift")
+            else:
+                print_warning(f"⚠️  No active shift at current time ({current_hour}:00). DSP will need to wait for shift start.")
 
-            # Create shifts for the week (Mon-Fri)
-            for day_offset in range(-3, 5):  # Past 3 days + future 4 days
+            # Create shifts for the week (Mon-Fri) with multiple daily shifts
+            print_success(f"\nCreating shifts for the rest of the week:")
+            for day_offset in range(-3, 8):  # Past 3 days + future 7 days
                 if day_offset == 0:  # Skip today, already created
                     continue
 
@@ -1345,24 +1374,37 @@ def main():
                 if shift_date.weekday() >= 5:  # 5=Saturday, 6=Sunday
                     continue
 
-                client_index = abs(day_offset) % len(clients)
-                shift_data = {
-                    "schedule_id": schedule["id"],
-                    "staff_id": tim_staff["id"],
-                    "client_id": clients[client_index]["id"],  # IMPORTANT: Assign client to shift for scheduled clients endpoint
-                    "shift_date": str(shift_date),
-                    "start_time": "08:00:00",
-                    "end_time": "16:00:00",
-                    "shift_type": "regular",
-                    "status": "scheduled" if day_offset > 0 else "completed",
-                    "required_documentation": ["vitals_log", "shift_note", "meal_log"]  # Required docs for clock-out
-                }
-                shift = create_shift(token, shift_data)
-                if shift:
-                    shifts.append(shift)
-                    day_name = shift_date.strftime("%a %m/%d")
-                    status_emoji = "📅" if day_offset > 0 else "✓"
-                    print_success(f"  {status_emoji} {day_name}: {tim_staff['full_name']} → {clients[client_index]['first_name']} {clients[client_index]['last_name']}")
+                day_name = shift_date.strftime("%a %m/%d")
+                day_status = "completed" if day_offset < 0 else "scheduled"
+                status_emoji = "✓" if day_offset < 0 else "📅"
+
+                # Create 2 shifts per day (morning and afternoon)
+                daily_slots = [
+                    {"name": "Morning", "start": "08:00:00", "end": "13:00:00"},
+                    {"name": "Afternoon", "start": "13:00:00", "end": "18:00:00"}
+                ]
+
+                for slot_idx, slot in enumerate(daily_slots):
+                    # Rotate through clients
+                    client_idx = (abs(day_offset) + slot_idx) % len(clients)
+                    client = clients[client_idx]
+
+                    shift_data = {
+                        "schedule_id": schedule["id"],
+                        "staff_id": tim_staff["id"],
+                        "client_id": client["id"],
+                        "shift_date": str(shift_date),
+                        "start_time": slot["start"],
+                        "end_time": slot["end"],
+                        "shift_type": "regular",
+                        "status": day_status,
+                        "required_documentation": ["vitals_log", "shift_note", "meal_log"]
+                    }
+
+                    shift = create_shift(token, shift_data)
+                    if shift:
+                        shifts.append(shift)
+                        print_success(f"  {status_emoji} {day_name} {slot['name']}: {client['first_name']} {client['last_name']}")
 
     print_success(f"\nCreated {len(schedules)} schedules and {len(shifts)} shifts")
 

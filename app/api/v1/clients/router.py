@@ -7,6 +7,10 @@ from datetime import datetime, timezone, time, date
 import secrets
 import string
 import pytz
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_permission
@@ -960,8 +964,11 @@ async def get_currently_scheduled_clients(
 ):
     """
     Get clients that are currently scheduled for the logged-in DSP based on active shifts.
-    Uses the user's timezone to determine current time.
+    Uses the user's timezone (or organization timezone) to determine current time.
+    Only returns clients for shifts that are currently active (current time is between start_time and end_time).
     """
+
+    logger.info(f"Fetching scheduled clients for user {current_user.id} ({current_user.email})")
 
     # Get staff record for current user
     staff = db.query(Staff).filter(
@@ -970,7 +977,10 @@ async def get_currently_scheduled_clients(
     ).first()
 
     if not staff:
+        logger.warning(f"No staff record found for user {current_user.id}")
         return []
+
+    logger.info(f"Found staff record: {staff.id}")
 
     # Get user's timezone (use organization timezone if user timezone not set)
     user_timezone = current_user.timezone or (
@@ -979,8 +989,11 @@ async def get_currently_scheduled_clients(
 
     try:
         tz = pytz.timezone(user_timezone)
-    except:
+        logger.info(f"Using timezone: {user_timezone}")
+    except Exception as e:
+        logger.error(f"Invalid timezone '{user_timezone}', falling back to UTC: {str(e)}")
         tz = pytz.UTC
+        user_timezone = "UTC"
 
     # Get current time in user's timezone
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -988,23 +1001,51 @@ async def get_currently_scheduled_clients(
     current_date = now_user_tz.date()
     current_time = now_user_tz.time()
 
+    logger.info(
+        f"Current time - UTC: {now_utc}, "
+        f"User TZ ({user_timezone}): {now_user_tz}, "
+        f"Date: {current_date}, Time: {current_time}"
+    )
+
+    # Query all shifts for today first (for debugging)
+    all_today_shifts = db.query(Shift).filter(
+        Shift.staff_id == staff.id,
+        Shift.shift_date == current_date,
+        Shift.client_id.isnot(None)
+    ).all()
+
+    logger.info(f"Total shifts for today: {len(all_today_shifts)}")
+    for shift in all_today_shifts:
+        is_time_match = shift.start_time <= current_time.time() <= shift.end_time if isinstance(current_time, datetime) else shift.start_time <= current_time <= shift.end_time
+        logger.info(
+            f"Shift {shift.id}: {shift.start_time} - {shift.end_time}, "
+            f"Status: {shift.status}, Client: {shift.client_id}, "
+            f"Current time: {current_time}, Active: {is_time_match}"
+        )
+
+    # Extract just the time component for comparison (shift times are stored as Time objects)
+    current_time_only = current_time.time() if isinstance(current_time, datetime) else current_time
+
     # Query shifts for today that are currently in progress
     active_shifts = db.query(Shift).filter(
-        and_(
-            Shift.staff_id == staff.id,
-            Shift.shift_date == current_date,
-            Shift.start_time <= current_time,
-            Shift.end_time >= current_time,
-            Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.CONFIRMED, ShiftStatus.IN_PROGRESS]),
-            Shift.client_id != None  # Only shifts with assigned clients
-        )
+        Shift.staff_id == staff.id,
+        Shift.shift_date == current_date,
+        Shift.start_time <= current_time_only,
+        Shift.end_time >= current_time_only,
+        Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.CONFIRMED, ShiftStatus.IN_PROGRESS]),
+        Shift.client_id.isnot(None)  # Only shifts with assigned clients
     ).all()
+
+    logger.info(f"Active shifts found: {len(active_shifts)}")
 
     # Get unique client IDs from active shifts
     client_ids = list(set([shift.client_id for shift in active_shifts if shift.client_id]))
 
     if not client_ids:
+        logger.info("No active shifts with clients found, returning empty list")
         return []
+
+    logger.info(f"Client IDs from active shifts: {client_ids}")
 
     # Query clients
     clients = db.query(Client).filter(
@@ -1015,6 +1056,8 @@ async def get_currently_scheduled_clients(
         )
     ).all()
 
+    logger.info(f"Found {len(clients)} active clients")
+
     # Build response
     client_responses = []
     for client in clients:
@@ -1023,5 +1066,6 @@ async def get_currently_scheduled_clients(
             response.email = client.user.email
         response.full_name = client.full_name
         client_responses.append(response)
+        logger.info(f"Returning client: {client.full_name} (ID: {client.id})")
 
     return client_responses

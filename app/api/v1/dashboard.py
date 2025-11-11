@@ -277,16 +277,18 @@ async def get_quick_actions(
 async def get_recent_entries(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    limit: int = Query(5, ge=1, le=50, description="Number of recent entries to return")
+    limit: int = Query(10, ge=1, le=50, description="Number of recent entries to return")
 ):
     """
-    Get recent documentation entries (vitals, shift notes, meals, incidents) for the current DSP user
+    Get recent documentation entries (vitals, shift notes, meals, incidents, activities) for the current DSP user
     """
     try:
         from app.models.vitals_log import VitalsLog
         from app.models.shift_note import ShiftNote
         from app.models.meal_log import MealLog
+        from app.models.activity_log import ActivityLog
         from app.models.incident_report import IncidentReport as IncidentReportDoc
+        from app.models.client import ClientLocation, ClientAssignment as ClientAssignmentModel
 
         recent_entries = []
 
@@ -296,6 +298,20 @@ async def get_recent_entries(
         if not staff:
             return {"entries": []}
 
+        # Helper function to get client location
+        def get_client_location(client_id):
+            assignment = db.query(ClientAssignmentModel).filter(
+                ClientAssignmentModel.client_id == client_id,
+                ClientAssignmentModel.is_current == True
+            ).first()
+
+            if assignment and assignment.location_id:
+                location = db.query(ClientLocation).filter(
+                    ClientLocation.id == assignment.location_id
+                ).first()
+                return location.name if location else "Unknown Location"
+            return "Unknown Location"
+
         # Get recent vitals logs
         vitals = db.query(VitalsLog).filter(
             VitalsLog.staff_id == current_user.id
@@ -303,12 +319,16 @@ async def get_recent_entries(
 
         for vital in vitals:
             client = db.query(Client).filter(Client.id == vital.client_id).first()
+            recorded_at = vital.recorded_at if vital.recorded_at else datetime.now()
+
             recent_entries.append({
-                "client": client.full_name if client else "Unknown",
-                "type": "Vitals Log",
-                "time": vital.recorded_at.strftime("%I:%M %p") if vital.recorded_at else "",
-                "status": "Done",
-                "created_at": make_aware(vital.recorded_at)
+                "date": recorded_at.strftime("%a, %b %d"),
+                "time_in_kenya": recorded_at.strftime("%I:%M %p"),
+                "client_name": client.full_name if client else "Unknown",
+                "location": get_client_location(vital.client_id),
+                "activity_type": "Vitals Log",
+                "status": "Completed",
+                "created_at": make_aware(recorded_at)
             })
 
         # Get recent shift notes
@@ -318,12 +338,16 @@ async def get_recent_entries(
 
         for note in shift_notes:
             client = db.query(Client).filter(Client.id == note.client_id).first()
+            created_at = note.created_at if note.created_at else datetime.now()
+
             recent_entries.append({
-                "client": client.full_name if client else "Unknown",
-                "type": "Shift Note",
-                "time": note.created_at.strftime("%I:%M %p") if note.created_at else "",
-                "status": "Done",
-                "created_at": make_aware(note.created_at)
+                "date": created_at.strftime("%a, %b %d"),
+                "time_in_kenya": created_at.strftime("%I:%M %p"),
+                "client_name": client.full_name if client else "Unknown",
+                "location": get_client_location(note.client_id),
+                "activity_type": "Shift Note",
+                "status": "Completed",
+                "created_at": make_aware(created_at)
             })
 
         # Get recent meal logs
@@ -333,12 +357,35 @@ async def get_recent_entries(
 
         for meal in meals:
             client = db.query(Client).filter(Client.id == meal.client_id).first()
+            created_at = meal.created_at if meal.created_at else datetime.now()
+
             recent_entries.append({
-                "client": client.full_name if client else "Unknown",
-                "type": "Meal Intake",
-                "time": meal.created_at.strftime("%I:%M %p") if meal.created_at else "",
-                "status": "Done",
-                "created_at": make_aware(meal.created_at)
+                "date": created_at.strftime("%a, %b %d"),
+                "time_in_kenya": created_at.strftime("%I:%M %p"),
+                "client_name": client.full_name if client else "Unknown",
+                "location": get_client_location(meal.client_id),
+                "activity_type": "Meal Intake",
+                "status": "Completed",
+                "created_at": make_aware(created_at)
+            })
+
+        # Get recent activity logs
+        activities = db.query(ActivityLog).filter(
+            ActivityLog.staff_id == current_user.id
+        ).order_by(ActivityLog.created_at.desc()).limit(limit).all()
+
+        for activity in activities:
+            client = db.query(Client).filter(Client.id == activity.client_id).first()
+            created_at = activity.created_at if activity.created_at else datetime.now()
+
+            recent_entries.append({
+                "date": created_at.strftime("%a, %b %d"),
+                "time_in_kenya": created_at.strftime("%I:%M %p"),
+                "client_name": client.full_name if client else "Unknown",
+                "location": get_client_location(activity.client_id),
+                "activity_type": "Activity Log",
+                "status": "Completed",
+                "created_at": make_aware(created_at)
             })
 
         # Get recent incident reports
@@ -348,36 +395,21 @@ async def get_recent_entries(
 
         for incident in incidents:
             client = db.query(Client).filter(Client.id == incident.client_id).first()
-            # Use created_at for sorting (it's always timezone-aware)
-            incident_dt = incident.created_at
+            created_at = incident.created_at if incident.created_at else datetime.now()
 
             # Get severity value - handle both enum and string
             severity_value = incident.severity.value if hasattr(incident.severity, 'value') else str(incident.severity).lower()
 
-            # Convert 24-hour time to 12-hour format
-            display_time = ""
-            if incident.incident_time:
-                try:
-                    # Parse time like "15:04" and convert to "3:04 PM"
-                    time_parts = incident.incident_time.split(':')
-                    if len(time_parts) >= 2:
-                        hour = int(time_parts[0])
-                        minute = time_parts[1]
-                        period = "AM" if hour < 12 else "PM"
-                        display_hour = hour if hour <= 12 else hour - 12
-                        display_hour = 12 if display_hour == 0 else display_hour
-                        display_time = f"{display_hour}:{minute} {period}"
-                    else:
-                        display_time = incident.incident_time
-                except:
-                    display_time = incident.incident_time
+            status = "Completed" if severity_value in ["low", "LOW"] else "Urgent" if severity_value in ["high", "critical", "HIGH", "CRITICAL"] else "Pending"
 
             recent_entries.append({
-                "client": client.full_name if client else "Unknown",
-                "type": "IR",
-                "time": display_time,
-                "status": "Urgent" if severity_value in ["high", "critical", "HIGH", "CRITICAL"] else "Pending",
-                "created_at": make_aware(incident_dt)
+                "date": created_at.strftime("%a, %b %d"),
+                "time_in_kenya": created_at.strftime("%I:%M %p"),
+                "client_name": client.full_name if client else "Unknown",
+                "location": get_client_location(incident.client_id),
+                "activity_type": "Incident Report",
+                "status": status,
+                "created_at": make_aware(created_at)
             })
 
         # Sort by created_at and limit to requested count

@@ -46,9 +46,14 @@ async def get_current_shift(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get the current active shift for the logged-in DSP staff member."""
+    """
+    Get the current active shift for the logged-in DSP staff member.
+    Only returns shift if current time is within the shift's start and end times.
+    """
     import pytz
     from app.models.user import Organization
+
+    logger.info(f"Fetching current shift for user {current_user.id} ({current_user.email})")
 
     # Get staff record for current user
     staff = db.query(Staff).filter(
@@ -57,10 +62,13 @@ async def get_current_shift(
     ).first()
 
     if not staff:
+        logger.warning(f"No staff record found for user {current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Staff record not found for current user"
         )
+
+    logger.info(f"Found staff record: {staff.id}")
 
     # Get user's timezone (user timezone > organization timezone > UTC)
     # Safely get organization timezone
@@ -75,45 +83,114 @@ async def get_current_shift(
     user_timezone_str = current_user.timezone or org_timezone or "UTC"
     try:
         user_timezone = pytz.timezone(user_timezone_str)
-    except:
+        logger.info(f"Using timezone: {user_timezone_str}")
+    except Exception as e:
+        logger.error(f"Invalid timezone '{user_timezone_str}', falling back to UTC: {str(e)}")
         user_timezone = pytz.UTC
+        user_timezone_str = "UTC"
 
-    # Get today's date in user's timezone
-    now_user_tz = datetime.now(timezone.utc).replace(tzinfo=pytz.UTC).astimezone(user_timezone)
+    # Get today's date and current time in user's timezone
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=pytz.UTC)
+    now_user_tz = now_utc.astimezone(user_timezone)
     today = now_user_tz.date()
+    current_time = now_user_tz.time()
 
-    # Get the current active shift (today's shift that is in progress or scheduled for today)
+    logger.info(
+        f"Current time - UTC: {now_utc}, "
+        f"User TZ ({user_timezone_str}): {now_user_tz}, "
+        f"Date: {today}, Time: {current_time}"
+    )
+
+    # Extract just the time component for comparison (shift times are stored as Time objects)
+    current_time_only = current_time.time() if isinstance(current_time, datetime) else current_time
+
+    # Query ALL shifts for today first (for debugging)
+    all_today_shifts = db.query(Shift).filter(
+        Shift.staff_id == staff.id,
+        Shift.shift_date == today
+    ).all()
+
+    logger.info(f"Total shifts for today: {len(all_today_shifts)}")
+    for shift in all_today_shifts:
+        is_active = shift.start_time <= current_time_only <= shift.end_time
+        logger.info(
+            f"Shift {shift.id}: {shift.start_time} - {shift.end_time}, "
+            f"Status: {shift.status}, Client: {shift.client_id}, "
+            f"Current time: {current_time_only}, Active: {is_active}"
+        )
+
+    # Get the current active shift (time is within shift window)
     current_shift = db.query(Shift).options(
-        joinedload(Shift.schedule)
+        joinedload(Shift.schedule),
+        joinedload(Shift.client)  # Load client relationship
     ).filter(
         Shift.staff_id == staff.id,
         Shift.shift_date == today,
+        Shift.start_time <= current_time_only,
+        Shift.end_time >= current_time_only,
         Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.IN_PROGRESS])
     ).first()
 
     if not current_shift:
+        logger.info("No active shift found for current time")
+
+        # Find next upcoming shift today
+        next_shift = db.query(Shift).filter(
+            Shift.staff_id == staff.id,
+            Shift.shift_date == today,
+            Shift.start_time > current_time_only,
+            Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.CONFIRMED])
+        ).order_by(Shift.start_time).first()
+
+        message = "No active shift at this time"
+        if next_shift:
+            message = f"Next shift starts at {next_shift.start_time.strftime('%I:%M %p')}"
+            logger.info(f"Next shift found: {next_shift.id} at {next_shift.start_time}")
+
         return {
             "has_active_shift": False,
-            "message": "No active shift found for today"
+            "message": message
         }
 
-    # Get client assignment details from shift assignments
+    logger.info(f"Found active shift: {current_shift.id}")
+
+    # Get client assignment - check direct client_id field first (used by seed data)
     from app.models.staff import StaffAssignment
     from app.models.client import ClientLocation
     from app.models.scheduling import ShiftAssignment as ShiftClientAssignment
-
-    # Get the first client assignment for this shift
     from app.models.client import Client
-    shift_client_assignment = db.query(ShiftClientAssignment).options(
-        joinedload(ShiftClientAssignment.client)
-    ).filter(
-        ShiftClientAssignment.shift_id == current_shift.id
-    ).first()
 
-    client_id = shift_client_assignment.client_id if shift_client_assignment else None
-    client = shift_client_assignment.client if shift_client_assignment else None
+    client_id = None
+    client = None
+    assignment = None
 
-    # If no specific client assigned to shift, get the first active staff assignment
+    # First priority: Check direct client_id field on shift
+    if current_shift.client_id:
+        client_id = current_shift.client_id
+        client = current_shift.client  # Use the pre-loaded relationship
+        logger.info(f"Found client from direct shift.client_id: {client.full_name if client else client_id}")
+
+        # Get staff assignment for this client
+        assignment = db.query(StaffAssignment).filter(
+            StaffAssignment.staff_id == staff.id,
+            StaffAssignment.client_id == client_id,
+            StaffAssignment.is_active == True
+        ).first()
+
+    # Second priority: Check shift assignments table
+    if not client_id:
+        shift_client_assignment = db.query(ShiftClientAssignment).options(
+            joinedload(ShiftClientAssignment.client)
+        ).filter(
+            ShiftClientAssignment.shift_id == current_shift.id
+        ).first()
+
+        if shift_client_assignment:
+            client_id = shift_client_assignment.client_id
+            client = shift_client_assignment.client
+            logger.info(f"Found client from ShiftAssignment: {client.full_name if client else client_id}")
+
+    # Third priority: Get the first active staff assignment
     if not client_id:
         assignment = db.query(StaffAssignment).options(
             joinedload(StaffAssignment.client)
@@ -125,12 +202,7 @@ async def get_current_shift(
         if assignment and assignment.client:
             client_id = assignment.client_id
             client = assignment.client
-    else:
-        assignment = db.query(StaffAssignment).filter(
-            StaffAssignment.staff_id == staff.id,
-            StaffAssignment.client_id == client_id,
-            StaffAssignment.is_active == True
-        ).first()
+            logger.info(f"Found client from StaffAssignment: {client.full_name if client else client_id}")
 
     # Get location from client's current assignment
     from app.models.client import ClientAssignment, ClientLocation
@@ -316,9 +388,10 @@ async def get_my_shifts(
             detail="Staff record not found for current user"
         )
 
-    # Build query for shifts
+    # Build query for shifts with client relationship pre-loaded
     query = db.query(Shift).options(
-        joinedload(Shift.schedule)
+        joinedload(Shift.schedule),
+        joinedload(Shift.client)  # Pre-load client relationship
     ).filter(
         Shift.staff_id == staff.id
     )
@@ -339,16 +412,23 @@ async def get_my_shifts(
     # Format shift data
     shifts_data = []
     for shift in shifts:
-        # Get client assignment for this shift
-        shift_client_assignment = db.query(ShiftClientAssignment).options(
-            joinedload(ShiftClientAssignment.client)
-        ).filter(
-            ShiftClientAssignment.shift_id == shift.id
-        ).first()
+        # Priority 1: Check direct client_id field on shift (used by seed data)
+        client = None
+        if shift.client_id:
+            client = shift.client  # Use pre-loaded relationship
 
-        client = shift_client_assignment.client if shift_client_assignment else None
+        # Priority 2: Check shift assignments table
+        if not client:
+            shift_client_assignment = db.query(ShiftClientAssignment).options(
+                joinedload(ShiftClientAssignment.client)
+            ).filter(
+                ShiftClientAssignment.shift_id == shift.id
+            ).first()
 
-        # If no shift-specific client, get from staff assignment
+            if shift_client_assignment:
+                client = shift_client_assignment.client
+
+        # Priority 3: Fall back to first active staff assignment
         if not client:
             assignment = db.query(StaffAssignment).options(
                 joinedload(StaffAssignment.client)
@@ -665,6 +745,7 @@ async def create_shift(
         new_shift = Shift(
             schedule_id=shift_data.schedule_id,
             staff_id=shift_data.staff_id,
+            client_id=shift_data.client_id,  # Primary client for this shift
             location_id=shift_data.location_id,
             shift_date=shift_data.shift_date,
             start_time=shift_data.start_time,

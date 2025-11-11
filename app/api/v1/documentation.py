@@ -31,10 +31,14 @@ from app.models.incident_report import IncidentReport, IncidentTypeEnum, Inciden
 from app.models.meal_log import MealLog
 from app.models.activity_log import ActivityLog
 from app.models.staff import Staff, StaffAssignment
-from app.models.scheduling import Shift, ShiftStatus
+from app.models.scheduling import Shift, ShiftStatus, TimeClockEntry, TimeEntryType
 from app.core.config import settings
 import pytz
 from datetime import time as time_type
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -70,7 +74,10 @@ def verify_shift_time(db: Session, staff_user_id: str, client_id: str, organizat
     """
     Verify that documentation is being created during an active shift for the client.
     Returns True if there's an active shift for this staff-client pair at the current time.
+    Uses DSP's timezone to determine current time and compare with shift window.
     """
+    logger.info(f"Verifying shift time for staff user {staff_user_id}, client {client_id}, timezone {user_timezone}")
+
     # Get staff record from user_id
     staff = db.query(Staff).filter(
         Staff.user_id == staff_user_id,
@@ -78,13 +85,17 @@ def verify_shift_time(db: Session, staff_user_id: str, client_id: str, organizat
     ).first()
 
     if not staff:
+        logger.warning(f"No staff record found for user {staff_user_id}")
         return False
 
     # Get user's timezone
     try:
         tz = pytz.timezone(user_timezone)
-    except:
+        logger.info(f"Using timezone: {user_timezone}")
+    except Exception as e:
+        logger.error(f"Invalid timezone '{user_timezone}', falling back to UTC: {str(e)}")
         tz = pytz.UTC
+        user_timezone = "UTC"
 
     # Get current time in user's timezone
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -92,6 +103,29 @@ def verify_shift_time(db: Session, staff_user_id: str, client_id: str, organizat
     now_user_tz = now_utc_aware.astimezone(tz)
     current_date = now_user_tz.date()
     current_time = now_user_tz.time()
+
+    logger.info(
+        f"Current time - UTC: {now_utc}, "
+        f"User TZ ({user_timezone}): {now_user_tz}, "
+        f"Date: {current_date}, Time: {current_time}"
+    )
+
+    # Query for all shifts for this staff-client pair today
+    all_shifts_today = db.query(Shift).filter(
+        and_(
+            Shift.staff_id == staff.id,
+            Shift.client_id == client_id,
+            Shift.shift_date == current_date
+        )
+    ).all()
+
+    logger.info(f"Total shifts today for staff-client pair: {len(all_shifts_today)}")
+    for shift in all_shifts_today:
+        is_active = shift.start_time <= current_time <= shift.end_time
+        logger.info(
+            f"Shift {shift.id}: {shift.start_time} - {shift.end_time}, "
+            f"Status: {shift.status}, Active: {is_active}"
+        )
 
     # Query for active shift at current time
     active_shift = db.query(Shift).filter(
@@ -105,7 +139,65 @@ def verify_shift_time(db: Session, staff_user_id: str, client_id: str, organizat
         )
     ).first()
 
-    return active_shift is not None
+    if active_shift:
+        logger.info(f"Active shift found: {active_shift.id}")
+        return True
+    else:
+        logger.warning(f"No active shift found for staff-client pair at current time")
+        return False
+
+
+# Helper function to verify staff is clocked in
+def verify_clocked_in(db: Session, staff_user_id: str, organization_id: str) -> bool:
+    """
+    Verify that a staff member is currently clocked in.
+    Returns True if clocked in, raises HTTPException if not clocked in.
+    """
+    logger.info(f"Verifying clock-in status for staff user {staff_user_id}")
+
+    # Get staff record from user_id
+    staff = db.query(Staff).filter(
+        Staff.user_id == staff_user_id,
+        Staff.organization_id == organization_id
+    ).first()
+
+    if not staff:
+        logger.warning(f"No staff record found for user {staff_user_id}")
+        raise HTTPException(
+            status_code=404,
+            detail="Staff record not found"
+        )
+
+    # Find the most recent clock-in entry for this staff member
+    most_recent_clock_in = db.query(TimeClockEntry).filter(
+        TimeClockEntry.staff_id == staff.id,
+        TimeClockEntry.entry_type == TimeEntryType.CLOCK_IN
+    ).order_by(TimeClockEntry.entry_datetime.desc()).first()
+
+    if not most_recent_clock_in:
+        logger.warning(f"Staff {staff.id} has never clocked in")
+        raise HTTPException(
+            status_code=403,
+            detail="You must clock in before submitting documentation. Please tap 'Time In' in the Shift Clock."
+        )
+
+    # Check if there's a clock-out entry after the most recent clock-in
+    clock_out_after_clock_in = db.query(TimeClockEntry).filter(
+        TimeClockEntry.staff_id == staff.id,
+        TimeClockEntry.entry_type == TimeEntryType.CLOCK_OUT,
+        TimeClockEntry.entry_datetime > most_recent_clock_in.entry_datetime
+    ).first()
+
+    if clock_out_after_clock_in:
+        logger.warning(f"Staff {staff.id} is not currently clocked in (clocked out at {clock_out_after_clock_in.entry_datetime})")
+        raise HTTPException(
+            status_code=403,
+            detail="You must clock in before submitting documentation. Please tap 'Time In' in the Shift Clock."
+        )
+
+    logger.info(f"Staff {staff.id} is currently clocked in (clock-in time: {most_recent_clock_in.entry_datetime})")
+    return True
+
 
 # Vitals Logging Endpoints
 @router.post("/vitals", response_model=VitalsLogResponse)
@@ -115,8 +207,11 @@ async def create_vitals_log(
     db: Session = Depends(get_db)
 ):
     """
-    Create a new vitals log entry for a client
+    Create a new vitals log entry for a client.
+    Validates that the client is assigned to the DSP and that the DSP is on an active shift.
     """
+    logger.info(f"Creating vitals log for client {vitals_data.client_id} by user {current_user.id} ({current_user.email})")
+
     try:
         # Verify client exists and user has access
         client = db.query(Client).filter(
@@ -127,22 +222,37 @@ async def create_vitals_log(
         ).first()
 
         if not client:
+            logger.error(f"Client {vitals_data.client_id} not found or not in user's organization")
             raise HTTPException(status_code=404, detail="Client not found")
+
+        logger.info(f"Found client: {client.full_name} (ID: {client.id})")
 
         # Verify client is assigned to the staff member
         if not verify_client_assignment(db, current_user.id, vitals_data.client_id, current_user.organization_id):
+            logger.error(f"User {current_user.id} is not assigned to client {vitals_data.client_id}")
             raise HTTPException(
                 status_code=403,
                 detail="You can only create documentation for clients assigned to you"
             )
 
+        logger.info("Client assignment verified")
+
         # Verify documentation is being created during an active shift
         user_tz = current_user.timezone or (current_user.organization.timezone if current_user.organization else "UTC")
+        logger.info(f"Checking shift time with timezone: {user_tz}")
+
         if not verify_shift_time(db, current_user.id, vitals_data.client_id, current_user.organization_id, user_tz):
+            logger.error(f"User {current_user.id} is not on an active shift for client {vitals_data.client_id}")
             raise HTTPException(
                 status_code=403,
                 detail="You can only create documentation for clients during your scheduled shift time"
             )
+
+        logger.info("Shift time verified")
+
+        # Verify staff member is clocked in
+        verify_clocked_in(db, current_user.id, current_user.organization_id)
+        logger.info("Clock-in status verified - creating vitals log")
 
         # Create vitals log entry
         vitals_log = VitalsLog(
@@ -300,6 +410,9 @@ async def create_shift_note(
                 detail="You can only create documentation for clients during your scheduled shift time"
             )
 
+        # Verify staff member is clocked in
+        verify_clocked_in(db, current_user.id, current_user.organization_id)
+
         # Create shift note
         shift_note = ShiftNote(
             id=uuid.uuid4(),
@@ -456,6 +569,9 @@ async def create_incident_report(
                 status_code=403,
                 detail="You can only create documentation for clients during your scheduled shift time"
             )
+
+        # Verify staff member is clocked in
+        verify_clocked_in(db, current_user.id, current_user.organization_id)
 
         # Handle file uploads
         uploaded_files = []
@@ -708,6 +824,9 @@ async def create_meal_log(
                 status_code=403,
                 detail="You can only create documentation for clients during your scheduled shift time"
             )
+
+        # Verify staff member is clocked in
+        verify_clocked_in(db, current_user.id, current_user.organization_id)
 
         # Create meal log entry
         meal_log = MealLog(
@@ -1081,6 +1200,9 @@ async def create_activity_log(
                 status_code=403,
                 detail="You can only create documentation for clients during your scheduled shift time"
             )
+
+        # Verify staff member is clocked in
+        verify_clocked_in(db, current_user.id, current_user.organization_id)
 
         # Create activity log
         activity_log = ActivityLog(
