@@ -66,6 +66,7 @@ def _serialize_progress(progress: TrainingProgress) -> TrainingProgressResponse:
         passed=progress.passed,
         certification_issued_at=progress.certification_issued_at,
         certification_expires_at=progress.certification_expires_at,
+        acknowledged_at=progress.acknowledged_at,
         created_at=progress.created_at,
         updated_at=progress.updated_at
     )
@@ -297,24 +298,7 @@ def start_course(
         db.commit()
         db.refresh(progress)
 
-    return TrainingProgressResponse(
-        id=str(progress.id),
-        course_id=str(progress.course_id),
-        user_id=str(progress.user_id),
-        organization_id=str(progress.organization_id),
-        status=progress.status.value,
-        progress_percentage=progress.progress_percentage,
-        started_at=progress.started_at,
-        completed_at=progress.completed_at,
-        last_accessed_at=progress.last_accessed_at,
-        quiz_score=progress.quiz_score,
-        quiz_attempts=progress.quiz_attempts,
-        passed=progress.passed,
-        certification_issued_at=progress.certification_issued_at,
-        certification_expires_at=progress.certification_expires_at,
-        created_at=progress.created_at,
-        updated_at=progress.updated_at
-    )
+    return _serialize_progress(progress)
 
 
 @router.post("/courses/{course_id}/complete", response_model=TrainingProgressResponse)
@@ -414,6 +398,37 @@ def update_training_progress(
         progress.quiz_score = data.quiz_score
         progress.quiz_attempts += 1
 
+    progress.last_accessed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    db.commit()
+    db.refresh(progress)
+
+    return _serialize_progress(progress)
+
+
+@router.post("/progress/{progress_id}/acknowledge", response_model=TrainingProgressResponse)
+def acknowledge_training(
+    progress_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """DSP acknowledges training completion"""
+
+    progress = db.query(TrainingProgress).filter(
+        TrainingProgress.id == progress_id,
+        TrainingProgress.user_id == str(current_user.id),
+        TrainingProgress.organization_id == current_user.organization_id
+    ).first()
+
+    if not progress:
+        raise HTTPException(status_code=404, detail="Progress record not found")
+
+    # Verify training is completed
+    if progress.status != ProgressStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Training must be completed before acknowledgment")
+
+    # Acknowledge the training
+    progress.acknowledged_at = datetime.now(timezone.utc).replace(tzinfo=None)
     progress.last_accessed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()

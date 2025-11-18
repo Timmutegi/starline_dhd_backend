@@ -86,6 +86,7 @@ class TrainingProgressResponse(BaseModel):
     passed: bool
     certification_issued_at: Optional[datetime]
     certification_expires_at: Optional[datetime]
+    acknowledged_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
 

@@ -97,6 +97,7 @@ class TrainingProgress(Base):
     # Certification
     certification_issued_at = Column(DateTime, nullable=True)
     certification_expires_at = Column(DateTime, nullable=True)
+    acknowledged_at = Column(DateTime, nullable=True, comment="When DSP acknowledged training completion")
 
     # Metadata
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False)

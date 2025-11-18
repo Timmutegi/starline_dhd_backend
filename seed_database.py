@@ -509,7 +509,8 @@ def seed_training_courses(token: str, org_id: str, admin_user_id: str, tim_user_
             "duration_minutes": 20,
             "is_required": True,
             "passing_score": 90,
-            "provides_certification": False,
+            "provides_certification": True,
+            "certification_valid_days": 180,
             "status": "active"
         },
         {
@@ -546,7 +547,7 @@ def seed_training_courses(token: str, org_id: str, admin_user_id: str, tim_user_
         if created_courses:
             print_info(f"\nCreating training progress for Tim...")
 
-            # Course 1: HIPAA - Completed
+            # Course 1: HIPAA - Completed AND Acknowledged (VALID state)
             if len(created_courses) > 0:
                 course_id = created_courses[0]['id']
                 requests.post(
@@ -559,9 +560,24 @@ def seed_training_courses(token: str, org_id: str, admin_user_id: str, tim_user_
                     json={"quiz_score": 95}
                 )
                 if response.status_code == 200:
-                    print_success(f"  ✓ Completed: HIPAA Compliance Training (95%)")
+                    # Get the progress ID and acknowledge it
+                    progress_response = requests.get(
+                        f"{BASE_URL}/training/progress",
+                        headers={"Authorization": f"Bearer {token}"}
+                    )
+                    if progress_response.status_code == 200:
+                        progress_records = progress_response.json()
+                        for prog in progress_records:
+                            if prog['course_id'] == course_id:
+                                ack_response = requests.post(
+                                    f"{BASE_URL}/training/progress/{prog['id']}/acknowledge",
+                                    headers={"Authorization": f"Bearer {token}"}
+                                )
+                                if ack_response.status_code == 200:
+                                    print_success(f"  ✓ Valid: HIPAA Compliance Training (95%, Acknowledged)")
+                                break
 
-            # Course 2: Emergency Response - In Progress (65%)
+            # Course 2: Emergency Response - In Progress (65%) - NOT TAKEN state
             if len(created_courses) > 1:
                 course_id = created_courses[1]['id']
                 requests.post(
@@ -582,14 +598,14 @@ def seed_training_courses(token: str, org_id: str, admin_user_id: str, tim_user_
                                 headers={"Authorization": f"Bearer {token}"},
                                 json={"progress_percentage": 65, "status": "in_progress"}
                             )
-                            print_success(f"  ⏳ In Progress: Emergency Response Procedures (65%)")
+                            print_success(f"  ⏳ Not Taken: Emergency Response Procedures (65% In Progress)")
                             break
 
-            # Course 3: Medication Safety - Not Started (leave as is)
+            # Course 3: Medication Safety - Not Started - NOT TAKEN state
             if len(created_courses) > 2:
-                print_success(f"  📝 Not Started: Medication Administration Safety")
+                print_success(f"  📝 Not Taken: Medication Administration Safety (Not Started)")
 
-            # Course 4: Communication - Completed
+            # Course 4: Communication - Completed but NOT Acknowledged - PENDING ACKNOWLEDGMENT state
             if len(created_courses) > 3:
                 course_id = created_courses[3]['id']
                 requests.post(
@@ -602,7 +618,7 @@ def seed_training_courses(token: str, org_id: str, admin_user_id: str, tim_user_
                     json={"quiz_score": 88}
                 )
                 if response.status_code == 200:
-                    print_success(f"  ✓ Completed: Client Communication Best Practices (88%)")
+                    print_success(f"  ⚠️  Pending Acknowledgment: Client Communication Best Practices (88%, Not Acknowledged)")
 
         return created_courses
 
