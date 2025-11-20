@@ -209,6 +209,41 @@ def get_roles(token: str) -> Optional[list]:
         return None
 
 
+def create_manager(token: str, manager_data: Dict) -> Optional[Dict]:
+    """Create a manager user using the API"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/users/",
+            json=manager_data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}"
+            }
+        )
+
+        if response.status_code in [200, 201]:
+            result = response.json()
+            manager = result.get("user", result)
+            temp_password = result.get("temporary_password", "Admin123!!")
+
+            print_success(f"Created manager: {manager['first_name']} {manager['last_name']}")
+            print_info(f"  → Username: {manager.get('username', manager.get('email'))}")
+            print_info(f"  → Email: {manager['email']}")
+            print_info(f"  → Temporary password: {temp_password}")
+
+            # Add password info to manager dict for later use
+            manager['temporary_password'] = temp_password
+
+            return manager
+        else:
+            print_error(f"Failed to create manager {manager_data['first_name']}: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        print_error(f"Error creating manager {manager_data['first_name']}: {str(e)}")
+        return None
+
+
 def create_task(token: str, task_data: Dict) -> Optional[Dict]:
     """Create a task using the API"""
     try:
@@ -899,6 +934,58 @@ def main():
 
     if not support_staff_role_id:
         print_warning("Could not find 'Support Staff' role. Using default behavior...")
+
+    # Find Manager role
+    manager_role_id = None
+    if roles:
+        for role in roles:
+            if role["name"].lower() == "manager":
+                manager_role_id = role["id"]
+                print_success(f"Found 'Manager' role: {manager_role_id}")
+                break
+
+    if not manager_role_id:
+        print_warning("Could not find 'Manager' role. Skipping manager creation...")
+
+    # Create manager users
+    print_header("CREATING MANAGER USERS")
+
+    managers = []
+    if manager_role_id:
+        managers_data = [
+            {
+                "email": "manager1@kaziflex.com",
+                "username": "manager1",
+                "first_name": "Sarah",
+                "last_name": "Thompson",
+                "phone": "+1-555-0201",
+                "role_id": manager_role_id,
+                "password": "Manager123!!",
+                "must_change_password": False
+            },
+            {
+                "email": "manager2@kaziflex.com",
+                "username": "manager2",
+                "first_name": "Michael",
+                "last_name": "Rodriguez",
+                "phone": "+1-555-0202",
+                "role_id": manager_role_id,
+                "password": "Manager123!!",
+                "must_change_password": False
+            }
+        ]
+
+        for manager_data in managers_data:
+            manager = create_manager(token, manager_data)
+            if manager:
+                managers.append(manager)
+
+        if managers:
+            print_success(f"\nCreated {len(managers)} manager users successfully!")
+        else:
+            print_warning("No managers were created")
+    else:
+        print_info("Skipping manager creation - role not found")
 
     # Create 4 clients
     print_header("CREATING CLIENTS")

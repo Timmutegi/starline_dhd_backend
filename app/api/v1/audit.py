@@ -20,7 +20,8 @@ from app.schemas.audit import (
 import csv
 import json
 import io
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+import os
 
 router = APIRouter(prefix="/audit", tags=["Audit & Compliance"])
 
@@ -462,9 +463,66 @@ async def download_export(
             detail="Export has expired"
         )
 
-    # Return file stream (implementation would depend on storage system)
-    # For now, return a placeholder response
-    return {"message": "File download would be implemented here", "file_path": export_record.file_path}
+    # Determine file location and download
+    file_path = export_record.file_path
+
+    # Check if file is stored locally
+    if os.path.exists(file_path):
+        # Local file - use FileResponse
+        filename = os.path.basename(file_path)
+        media_type = "application/json" if export_record.export_format == "json" else \
+                     "application/pdf" if export_record.export_format == "pdf" else \
+                     "text/csv"
+
+        return FileResponse(
+            path=file_path,
+            media_type=media_type,
+            filename=f"audit_export_{export_id}.{export_record.export_format}"
+        )
+    elif file_path.startswith("s3://") or file_path.startswith("https://"):
+        # S3 file - generate presigned URL or stream from S3
+        from app.core.config import settings
+        import boto3
+        from botocore.exceptions import ClientError
+
+        try:
+            # Parse S3 path
+            if file_path.startswith("s3://"):
+                path_parts = file_path.replace("s3://", "").split("/", 1)
+                bucket_name = path_parts[0]
+                object_key = path_parts[1] if len(path_parts) > 1 else ""
+            else:
+                # Assume it's a CloudFront URL, extract the object key
+                # This is a simplified approach - adjust based on your URL structure
+                bucket_name = settings.AWS_S3_BUCKET
+                object_key = file_path.split("/")[-1]
+
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_REGION
+            )
+
+            # Generate presigned URL (valid for 1 hour)
+            presigned_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket_name, 'Key': object_key},
+                ExpiresIn=3600
+            )
+
+            return {"download_url": presigned_url, "expires_in_seconds": 3600}
+
+        except ClientError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to generate download URL: {str(e)}"
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Export file not found"
+        )
 
 
 async def _process_audit_export(export_id: str, export_request: AuditExportRequest, organization_id: str):

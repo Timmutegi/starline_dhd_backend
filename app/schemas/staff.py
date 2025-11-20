@@ -475,13 +475,15 @@ class StaffSummary(BaseModel):
     display_name: str
     email: str
     job_title: Optional[str]
+    position: Optional[str] = None  # Alias for job_title for frontend compatibility
     department: Optional[str]
-    employment_status: EmploymentStatus
+    employment_status: str  # Changed from EmploymentStatus enum to string
     hire_date: date
     last_login: Optional[datetime]
 
     class Config:
         from_attributes = True
+        use_enum_values = True  # Serialize enums as their values
 
 class StaffListResponse(BaseModel):
     staff: List[StaffSummary]

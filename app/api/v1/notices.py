@@ -89,6 +89,13 @@ def get_notices(
     ).all()
     read_notice_ids = {str(nid[0]) for nid in read_notice_ids}
 
+    # Get user's acknowledged notices
+    acknowledged_notice_ids = db.query(NoticeReadReceipt.notice_id).filter(
+        NoticeReadReceipt.user_id == str(current_user.id),
+        NoticeReadReceipt.acknowledged_at.isnot(None)
+    ).all()
+    acknowledged_notice_ids = {str(nid[0]) for nid in acknowledged_notice_ids}
+
     # Filter for unread only if requested
     if unread_only:
         filtered_notices = [
@@ -127,7 +134,7 @@ def get_notices(
             "updated_at": notice.updated_at,
             "created_by": str(notice.created_by),
             "read": notice.id in read_notice_ids,
-            "acknowledged": False  # TODO: Track acknowledgments separately
+            "acknowledged": notice.id in acknowledged_notice_ids
         }
         notices_response.append(NoticeResponse(**notice_dict))
 

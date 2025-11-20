@@ -428,20 +428,47 @@ async def export_calendar_ical(
             detail="Failed to export calendar"
         )
 
-@router.post("/sync", response_model=MessageResponse)
+@router.post("/sync", response_model=MessageResponse, status_code=501)
 async def sync_external_calendar(
-    calendar_url: str = Query(..., description="External calendar URL"),
+    calendar_url: str = Query(..., description="External calendar URL (iCal, Google Calendar, Outlook)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("calendar", "update"))
 ):
-    """Sync with external calendar (placeholder for future implementation)."""
+    """
+    Sync with external calendar systems.
 
-    # This would be implemented to sync with external calendars like Google Calendar, Outlook, etc.
-    # For now, return a placeholder response
+    Future implementation will support:
+    - Google Calendar API integration
+    - Microsoft Outlook/Office 365 calendar sync
+    - iCal/CalDAV subscriptions
+    - Two-way synchronization of appointments and shifts
+    - Conflict detection and resolution
+    """
+    from urllib.parse import urlparse
 
-    return MessageResponse(
-        message="External calendar sync feature is not yet implemented",
-        success=False
+    # Validate URL format
+    try:
+        parsed_url = urlparse(calendar_url)
+        if not all([parsed_url.scheme, parsed_url.netloc]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid calendar URL format"
+            )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid calendar URL format"
+        )
+
+    # Return 501 Not Implemented with informative message
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail={
+            "message": "External calendar sync feature is planned but not yet implemented",
+            "supported_formats": ["Google Calendar", "Microsoft Outlook", "iCal/CalDAV"],
+            "requested_url": calendar_url,
+            "contact": "Contact your system administrator for calendar integration requirements"
+        }
     )
 
 def generate_ical_calendar(

@@ -52,7 +52,11 @@ def require_role(allowed_roles: List[str]):
                 detail="No role assigned to user"
             )
 
-        if current_user.role.name not in allowed_roles:
+        # Normalize role names for comparison (handle spaces vs underscores)
+        user_role_normalized = current_user.role.name.lower().replace(" ", "_")
+        normalized_allowed_roles = [role.lower().replace(" ", "_") for role in allowed_roles]
+
+        if user_role_normalized not in normalized_allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Insufficient permissions. Required roles: {', '.join(allowed_roles)}"
@@ -66,14 +70,14 @@ async def get_super_admin(current_user: User = Depends(require_role(["super_admi
     """Dependency for super admin only access"""
     return current_user
 
-async def get_admin_or_above(current_user: User = Depends(require_role(["super_admin", "admin"]))):
+async def get_admin_or_above(current_user: User = Depends(require_role(["super_admin", "organization_admin", "billing_admin"]))):
     """Dependency for admin level access and above"""
     return current_user
 
-async def get_manager_or_above(current_user: User = Depends(require_role(["super_admin", "admin", "manager"]))):
+async def get_manager_or_above(current_user: User = Depends(require_role(["super_admin", "organization_admin", "billing_admin", "hr_manager", "manager", "supervisor"]))):
     """Dependency for manager level access and above"""
     return current_user
 
-async def get_staff_or_above(current_user: User = Depends(require_role(["super_admin", "admin", "manager", "staff"]))):
+async def get_staff_or_above(current_user: User = Depends(require_role(["super_admin", "organization_admin", "billing_admin", "hr_manager", "manager", "supervisor", "support_staff", "staff"]))):
     """Dependency for staff level access and above"""
     return current_user

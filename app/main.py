@@ -16,14 +16,14 @@ from app.api.v1.staff import router as staff_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.scheduling import router as scheduling_router
 from app.api.v1.scheduling import time_clock, appointments, availability, calendar
-from app.api.v1 import dashboard, documentation, notifications, tasks, admin, audit
+from app.api.v1 import dashboard, documentation, notifications, tasks, admin, manager, audit, client_portal, locations
 from app.api.v1 import training as training_api, notices as notices_api, reports, documents as documents_api
 
 # Import all models to ensure they're registered with SQLAlchemy before table creation
 from app.models import (
     user, client, staff, scheduling, task as task_model,
     vitals_log, shift_note, incident_report, notification as notification_model,
-    audit_log, meal_log, activity_log, training, notice
+    audit_log, meal_log, activity_log, training, notice, location
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -211,6 +211,18 @@ app.include_router(
 )
 
 app.include_router(
+    manager.router,
+    prefix=f"{settings.API_V1_STR}/manager",
+    tags=["Manager"]
+)
+
+app.include_router(
+    client_portal.router,
+    prefix=f"{settings.API_V1_STR}/client",
+    tags=["Client Portal"]
+)
+
+app.include_router(
     audit.router,
     prefix=f"{settings.API_V1_STR}"
 )
@@ -237,6 +249,12 @@ app.include_router(
     documents_api.router,
     prefix=f"{settings.API_V1_STR}/documents",
     tags=["Documents"]
+)
+
+app.include_router(
+    locations.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["Locations"]
 )
 
 if __name__ == "__main__":

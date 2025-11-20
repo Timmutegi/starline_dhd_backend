@@ -85,7 +85,7 @@ async def login(
     if not user.email_verified:
         otp = generate_otp()
         user.email_verification_otp = hash_otp(otp)
-        user.email_verification_otp_expires = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRE_MINUTES)
+        user.email_verification_otp_expires = datetime.utcnow() + timedelta(minutes=settings.OTP_EXPIRE_MINUTES)
         db.commit()
 
         verification_link = f"{settings.FRONTEND_URL}/verify-email?email={user.email}"
@@ -195,7 +195,7 @@ async def verify_email_otp(
             detail="No verification code found. Please request a new one."
         )
 
-    if user.email_verification_otp_expires < datetime.now(timezone.utc):
+    if user.email_verification_otp_expires < datetime.utcnow():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Verification code has expired. Please request a new one."
@@ -231,6 +231,60 @@ async def verify_email_otp(
     )
 
     return {"message": "Email verified successfully", "success": True}
+
+@router.post("/resend-verification-code")
+async def resend_verification_code(
+    request: Request,
+    email_data: BaseModel,
+    db: Session = Depends(get_db)
+):
+    """Resend email verification code to user"""
+    # Extract email from request body
+    email = getattr(email_data, 'email', None)
+
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is required"
+        )
+
+    user = db.query(User).filter(User.email == email).first()
+
+    if not user:
+        # Don't reveal if user exists or not for security
+        return {
+            "message": "If an account exists with this email, a verification code has been sent.",
+            "success": True
+        }
+
+    if user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already verified"
+        )
+
+    # Generate new OTP
+    otp = generate_otp()
+    user.email_verification_otp = hash_otp(otp)
+    user.email_verification_otp_expires = datetime.utcnow() + timedelta(minutes=settings.OTP_EXPIRE_MINUTES)
+
+    db.add(AuthAuditLog(
+        user_id=user.id,
+        action="resend_verification_code",
+        ip_address=request.client.host,
+        user_agent=request.headers.get("user-agent"),
+        success=True
+    ))
+    db.commit()
+
+    # Send verification email
+    verification_link = f"{settings.FRONTEND_URL}/verify-email?email={user.email}"
+    await EmailService.send_verification_email(user.email, otp, verification_link)
+
+    return {
+        "message": "Verification code has been resent to your email.",
+        "success": True
+    }
 
 @router.get("/profile", response_model=UserResponse)
 async def get_profile(

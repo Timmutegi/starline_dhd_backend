@@ -53,6 +53,7 @@ class ClientUpdate(BaseModel):
     allergies: Optional[List[str]] = None
     dietary_restrictions: Optional[List[str]] = None
     discharge_date: Optional[date] = None
+    location_id: Optional[UUID] = None
 
 class ClientResponse(ClientBase):
     id: UUID
@@ -63,11 +64,13 @@ class ClientResponse(ClientBase):
     status: ClientStatusType
     admission_date: date
     discharge_date: Optional[date] = None
+    location_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
     created_by: Optional[UUID] = None
     full_name: Optional[str] = None
     email: Optional[str] = None
+    organization_name: Optional[str] = None
     location_name: Optional[str] = None
     location_address: Optional[str] = None
     reporting_days: Optional[List[str]] = None

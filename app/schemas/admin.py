@@ -46,6 +46,7 @@ class UserActivitySummary(BaseModel):
     email: str = Field(..., description="Email address")
     full_name: str = Field(..., description="Full name")
     organization_name: str = Field(..., description="Organization name")
+    role_name: Optional[str] = Field(None, description="Role name")
     last_login: Optional[datetime] = Field(None, description="Last login timestamp")
     days_since_login: Optional[int] = Field(None, description="Days since last login")
     login_count_period: int = Field(..., description="Login count in specified period")

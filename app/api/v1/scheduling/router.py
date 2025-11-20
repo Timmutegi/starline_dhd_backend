@@ -204,12 +204,39 @@ async def get_current_shift(
             client = assignment.client
             logger.info(f"Found client from StaffAssignment: {client.full_name if client else client_id}")
 
-    # Get location from client's current assignment
+    # Get location - Priority order:
+    # 1. Location from the shift itself
+    # 2. Location from the client's direct location_id field
+    # 3. Location from client's current assignment (legacy)
     from app.models.client import ClientAssignment, ClientLocation
+    from app.models.location import Location
+
     location_name = "Location Not Set"
     location_address = ""
+    location = None
 
-    if client_id:
+    # First priority: Check shift's location_id
+    if current_shift.location_id:
+        location = db.query(Location).filter(
+            Location.id == current_shift.location_id
+        ).first()
+        if location:
+            location_name = location.name
+            location_address = location.address or ""
+            logger.info(f"Found location from shift: {location_name}")
+
+    # Second priority: Check client's direct location_id
+    if not location and client and client.location_id:
+        location = db.query(Location).filter(
+            Location.id == client.location_id
+        ).first()
+        if location:
+            location_name = location.name
+            location_address = location.address or ""
+            logger.info(f"Found location from client: {location_name}")
+
+    # Third priority: Check client assignment (legacy)
+    if not location and client_id:
         client_assignment = db.query(ClientAssignment).options(
             joinedload(ClientAssignment.location)
         ).filter(
@@ -220,6 +247,7 @@ async def get_current_shift(
         if client_assignment and client_assignment.location:
             location_name = client_assignment.location.name
             location_address = client_assignment.location.address
+            logger.info(f"Found location from client assignment: {location_name}")
 
     # Get tasks for this shift
     from app.models.task import Task, TaskStatusEnum

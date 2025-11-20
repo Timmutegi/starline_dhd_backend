@@ -72,6 +72,11 @@ class UserCreate(UserBase):
             raise ValueError('Password must contain at least one special character')
         return v
 
+class AdminUserCreate(UserBase):
+    """Schema for admin user creation - password is auto-generated"""
+    organization_id: Optional[UUID] = None
+    role_id: UUID = Field(..., description="Role ID for the user")
+
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username: Optional[str] = Field(None, min_length=3, max_length=100)
@@ -102,6 +107,15 @@ class UserResponse(UserInDB):
     organization: Optional[OrganizationInDB] = None
     role_name: Optional[str] = None
     user_type: Optional[str] = None  # 'staff', 'client', or 'admin'
+
+    class Config:
+        from_attributes = True
+
+class AdminUserCreateResponse(BaseModel):
+    """Response for admin user creation - includes generated password"""
+    user: UserResponse
+    generated_password: str = Field(..., description="Auto-generated password sent to user")
+    message: str = Field(..., description="Success message")
 
     class Config:
         from_attributes = True

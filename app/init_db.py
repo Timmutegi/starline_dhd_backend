@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, engine, Base
 from app.core.security import get_password_hash
 from app.models.user import User, Organization, Role, Permission, UserStatus
+from app.models.location import Location  # Import location model BEFORE client model
 from app.models.staff import Staff  # Import staff models to ensure tables are created
 from app.models.client import Client  # Import client models to ensure tables are created
 from app.models.scheduling import *  # Import scheduling models to ensure tables are created
@@ -147,13 +148,28 @@ def init_db():
                 permissions["staff:manage_training"], permissions["staff:manage_certifications"],
                 permissions["staff:manage_performance"], permissions["staff:view_payroll"],
                 permissions["staff:manage_assignments"], permissions["users:read"],
-                permissions["users:update"], permissions["reports:read"]
+                permissions["users:update"], permissions["reports:read"],
+                permissions["clients:read"], permissions["clients:update"],
+                permissions["appointments:read"], permissions["appointments:create"],
+                permissions["appointments:update"], permissions["appointments:delete"],
+                permissions["scheduling:read"], permissions["scheduling:create"],
+                permissions["scheduling:update"], permissions["scheduling:delete"],
+                permissions["calendar:read"], permissions["calendar:create"],
+                permissions["calendar:update"], permissions["calendar:delete"],
+                permissions["documentation:read"], permissions["notifications:read"]
             ]),
             ("Supervisor", "Staff oversight and performance management", False, [
                 permissions["staff:read"], permissions["staff:update"],
                 permissions["staff:manage_training"], permissions["staff:manage_performance"],
                 permissions["staff:manage_assignments"], permissions["clients:read"],
-                permissions["documentation:read"], permissions["reports:read"]
+                permissions["clients:update"], permissions["documentation:read"],
+                permissions["documentation:create"], permissions["documentation:update"],
+                permissions["reports:read"], permissions["appointments:read"],
+                permissions["appointments:create"], permissions["appointments:update"],
+                permissions["appointments:delete"], permissions["scheduling:read"],
+                permissions["scheduling:create"], permissions["scheduling:update"],
+                permissions["calendar:read"], permissions["calendar:create"],
+                permissions["calendar:update"], permissions["notifications:read"]
             ]),
             ("Support Staff", "Client care and documentation", False, [
                 permissions["clients:read"], permissions["clients:update"],
@@ -171,6 +187,12 @@ def init_db():
                 permissions["billing:update"], permissions["billing:process"],
                 permissions["reports:read"], permissions["reports:export"],
                 permissions["staff:read"], permissions["staff:view_payroll"]
+            ]),
+            ("Client", "Client self-service portal access", False, [
+                permissions["clients:read"],  # Can view own profile
+                permissions["documentation:read"],  # Can view own documentation
+                permissions["appointments:read"],  # Can view own appointments
+                permissions["notifications:read"]  # Can view notifications
             ]),
         ]
 

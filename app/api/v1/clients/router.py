@@ -74,7 +74,7 @@ async def create_client(
             detail="Email already registered"
         )
 
-    # Validate role if provided
+    # Validate role if provided, otherwise assign default "Client" role
     role = None
     if client_data.role_id:
         role = db.query(Role).filter(Role.id == client_data.role_id).first()
@@ -83,6 +83,14 @@ async def create_client(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Role not found"
             )
+    else:
+        # Auto-assign "Client" role if no role specified
+        role = db.query(Role).filter(
+            Role.name == "Client",
+            Role.organization_id == current_user.organization_id
+        ).first()
+        if role:
+            client_data.role_id = role.id
 
     # Validate custom permissions if provided
     custom_permissions = []
@@ -109,7 +117,7 @@ async def create_client(
         last_name=client_data.last_name,
         role_id=client_data.role_id,
         status=UserStatus.ACTIVE,
-        email_verified=False,
+        email_verified=True,  # Auto-verify clients created by admins
         must_change_password=True,
         password_changed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         use_custom_permissions=client_data.use_custom_permissions
@@ -221,13 +229,26 @@ async def list_clients(
     offset = (page - 1) * page_size
     clients = query.offset(offset).limit(page_size).all()
 
-    # Add user emails to response
+    # Add user emails, organization name, and location info to response
     client_responses = []
     for client in clients:
         response = ClientResponse.model_validate(client)
         if client.user:
             response.email = client.user.email
         response.full_name = client.full_name
+
+        # Add organization name
+        if client.organization:
+            response.organization_name = client.organization.name
+
+        # Add location information if location_id is set
+        if client.location_id:
+            from app.models.location import Location
+            location = db.query(Location).filter(Location.id == client.location_id).first()
+            if location:
+                response.location_name = location.name
+                response.location_address = location.address
+
         client_responses.append(response)
 
     # Calculate total pages
@@ -274,6 +295,14 @@ async def get_client(
         response.email = client.user.email
     response.full_name = client.full_name
 
+    # Add location information if location_id is set
+    if client.location_id:
+        from app.models.location import Location
+        location = db.query(Location).filter(Location.id == client.location_id).first()
+        if location:
+            response.location_name = location.name
+            response.location_address = location.address
+
     return response
 
 @router.put("/{client_id}", response_model=ClientResponse)
@@ -311,6 +340,14 @@ async def update_client(
         if client.user:
             response.email = client.user.email
         response.full_name = client.full_name
+
+        # Add location information if location_id is set
+        if client.location_id:
+            from app.models.location import Location
+            location = db.query(Location).filter(Location.id == client.location_id).first()
+            if location:
+                response.location_name = location.name
+                response.location_address = location.address
 
         return response
 

@@ -33,6 +33,7 @@ class Task(Base):
     # Task details
     title = Column(String(200), nullable=False, comment="Task title")
     description = Column(Text, nullable=True, comment="Task description")
+    task_type = Column(String(50), nullable=True, index=True, comment="Task type (e.g., help_request, follow_up, etc.)")
     priority = Column(Enum(TaskPriorityEnum), nullable=False, default=TaskPriorityEnum.MEDIUM, index=True)
     status = Column(Enum(TaskStatusEnum), nullable=False, default=TaskStatusEnum.PENDING, index=True)
 

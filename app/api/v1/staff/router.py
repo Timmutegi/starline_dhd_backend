@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
 from typing import List, Optional
 from uuid import UUID
 from app.core.database import get_db
@@ -291,8 +292,9 @@ async def get_staff_list(
             display_name=staff.display_name,
             email=staff.user.email,
             job_title=staff.job_title,
+            position=staff.job_title,  # Add position field (alias for job_title)
             department=staff.department,
-            employment_status=staff.employment_status,
+            employment_status=staff.employment_status.value if hasattr(staff.employment_status, 'value') else str(staff.employment_status),
             hire_date=staff.hire_date,
             last_login=staff.user.last_login
         ))
@@ -687,46 +689,66 @@ async def get_my_assigned_clients(
             StaffAssignment.is_active == True
         ).first()
 
-        # Add location information from client assignments
+        # Add location information - Priority order:
+        # 1. Client's direct location_id field
+        # 2. Client assignment (legacy)
         from app.models.client import ClientAssignment, ClientLocation
-        current_assignment = db.query(ClientAssignment).filter(
-            ClientAssignment.client_id == client.id,
-            ClientAssignment.is_current == True
-        ).first()
+        from app.models.location import Location
 
-        if current_assignment and current_assignment.location_id:
-            location = db.query(ClientLocation).filter(
-                ClientLocation.id == current_assignment.location_id
+        location_found = False
+
+        # First priority: Check client's direct location_id
+        if client.location_id:
+            location = db.query(Location).filter(
+                Location.id == client.location_id
             ).first()
             if location:
                 response.location_name = location.name
-                response.location_address = location.address
-            else:
-                response.location_name = None
-                response.location_address = None
-        else:
+                response.location_address = location.address or ""
+                location_found = True
+
+        # Second priority: Check client assignment (legacy)
+        if not location_found:
+            current_assignment = db.query(ClientAssignment).filter(
+                ClientAssignment.client_id == client.id,
+                ClientAssignment.is_current == True
+            ).first()
+
+            if current_assignment and current_assignment.location_id:
+                location = db.query(ClientLocation).filter(
+                    ClientLocation.id == current_assignment.location_id
+                ).first()
+                if location:
+                    response.location_name = location.name
+                    response.location_address = location.address
+                    location_found = True
+
+        # Set to None if no location found
+        if not location_found:
             response.location_name = None
             response.location_address = None
 
-        # Add reporting schedule (days of week)
-        # This would come from shift assignments - for now use a placeholder
-        # In production, query Shift table to get actual schedule
-        from app.models.scheduling import Shift, ShiftStatus
+        # Add reporting schedule (days of week) based on actual shifts
+        from app.models.scheduling import Shift, ShiftStatus, ShiftAssignment
         from datetime import datetime, timedelta
 
-        # Get recent/upcoming shifts to determine reporting days
-        # Note: Shifts don't have direct client_id - they use ShiftAssignment
-        # For now, just get all shifts for this staff member in the time range
-        # TODO: Join with ShiftAssignment to filter by client
+        # Get recent/upcoming shifts to determine reporting days for this specific client
         start_date = datetime.now().date() - timedelta(days=7)
         end_date = datetime.now().date() + timedelta(days=7)
 
-        shifts = db.query(Shift).filter(
+        # Query shifts that are either directly assigned to this client or have shift assignments for this client
+        shifts = db.query(Shift).outerjoin(
+            ShiftAssignment, Shift.id == ShiftAssignment.shift_id
+        ).filter(
             Shift.staff_id == staff.id,
             Shift.shift_date >= start_date,
             Shift.shift_date <= end_date,
-            Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.IN_PROGRESS, ShiftStatus.COMPLETED])
-        ).all()
+            Shift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.IN_PROGRESS, ShiftStatus.COMPLETED]),
+            or_(
+                Shift.client_id == client.id,  # Primary client assignment
+                ShiftAssignment.client_id == client.id  # Additional client assignment
+            )
+        ).distinct().all()
 
         # Extract unique days of week from shifts
         reporting_days = set()
@@ -859,24 +881,42 @@ async def get_assigned_client_by_id(
         response.email = client.user.email
     response.full_name = client.full_name
 
-    # Add location information from client assignments
+    # Add location information - Priority order:
+    # 1. Client's direct location_id field
+    # 2. Client assignment (legacy)
     from app.models.client import ClientAssignment as ClientAssignmentModel, ClientLocation
-    current_assignment = db.query(ClientAssignmentModel).filter(
-        ClientAssignmentModel.client_id == client.id,
-        ClientAssignmentModel.is_current == True
-    ).first()
+    from app.models.location import Location
 
-    if current_assignment and current_assignment.location_id:
-        location = db.query(ClientLocation).filter(
-            ClientLocation.id == current_assignment.location_id
+    location_found = False
+
+    # First priority: Check client's direct location_id
+    if client.location_id:
+        location = db.query(Location).filter(
+            Location.id == client.location_id
         ).first()
         if location:
             response.location_name = location.name
-            response.location_address = location.address
-        else:
-            response.location_name = None
-            response.location_address = None
-    else:
+            response.location_address = location.address or ""
+            location_found = True
+
+    # Second priority: Check client assignment (legacy)
+    if not location_found:
+        current_assignment = db.query(ClientAssignmentModel).filter(
+            ClientAssignmentModel.client_id == client.id,
+            ClientAssignmentModel.is_current == True
+        ).first()
+
+        if current_assignment and current_assignment.location_id:
+            location = db.query(ClientLocation).filter(
+                ClientLocation.id == current_assignment.location_id
+            ).first()
+            if location:
+                response.location_name = location.name
+                response.location_address = location.address
+                location_found = True
+
+    # Set to None if no location found
+    if not location_found:
         response.location_name = None
         response.location_address = None
 

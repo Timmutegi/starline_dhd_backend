@@ -298,10 +298,24 @@ async def get_recent_entries(
         if not staff:
             return {"entries": []}
 
-        # Helper function to get client location
-        def get_client_location(client_id):
+        # Helper function to get client location - accepts client object to avoid duplicate queries
+        def get_client_location(client):
+            from app.models.location import Location
+
+            if not client:
+                return "Unknown Location"
+
+            # First priority: Check client's direct location_id
+            if client.location_id:
+                location = db.query(Location).filter(
+                    Location.id == client.location_id
+                ).first()
+                if location:
+                    return location.name
+
+            # Second priority: Check client assignment (legacy)
             assignment = db.query(ClientAssignmentModel).filter(
-                ClientAssignmentModel.client_id == client_id,
+                ClientAssignmentModel.client_id == client.id,
                 ClientAssignmentModel.is_current == True
             ).first()
 
@@ -310,6 +324,7 @@ async def get_recent_entries(
                     ClientLocation.id == assignment.location_id
                 ).first()
                 return location.name if location else "Unknown Location"
+
             return "Unknown Location"
 
         # Get recent vitals logs
@@ -325,7 +340,7 @@ async def get_recent_entries(
                 "date": recorded_at.strftime("%a, %b %d"),
                 "time_in_kenya": recorded_at.strftime("%I:%M %p"),
                 "client_name": client.full_name if client else "Unknown",
-                "location": get_client_location(vital.client_id),
+                "location": get_client_location(client),
                 "activity_type": "Vitals Log",
                 "status": "Completed",
                 "created_at": make_aware(recorded_at)
@@ -344,7 +359,7 @@ async def get_recent_entries(
                 "date": created_at.strftime("%a, %b %d"),
                 "time_in_kenya": created_at.strftime("%I:%M %p"),
                 "client_name": client.full_name if client else "Unknown",
-                "location": get_client_location(note.client_id),
+                "location": get_client_location(client),
                 "activity_type": "Shift Note",
                 "status": "Completed",
                 "created_at": make_aware(created_at)
@@ -363,7 +378,7 @@ async def get_recent_entries(
                 "date": created_at.strftime("%a, %b %d"),
                 "time_in_kenya": created_at.strftime("%I:%M %p"),
                 "client_name": client.full_name if client else "Unknown",
-                "location": get_client_location(meal.client_id),
+                "location": get_client_location(client),
                 "activity_type": "Meal Intake",
                 "status": "Completed",
                 "created_at": make_aware(created_at)
@@ -382,7 +397,7 @@ async def get_recent_entries(
                 "date": created_at.strftime("%a, %b %d"),
                 "time_in_kenya": created_at.strftime("%I:%M %p"),
                 "client_name": client.full_name if client else "Unknown",
-                "location": get_client_location(activity.client_id),
+                "location": get_client_location(client),
                 "activity_type": "Activity Log",
                 "status": "Completed",
                 "created_at": make_aware(created_at)
@@ -406,7 +421,7 @@ async def get_recent_entries(
                 "date": created_at.strftime("%a, %b %d"),
                 "time_in_kenya": created_at.strftime("%I:%M %p"),
                 "client_name": client.full_name if client else "Unknown",
-                "location": get_client_location(incident.client_id),
+                "location": get_client_location(client),
                 "activity_type": "Incident Report",
                 "status": status,
                 "created_at": make_aware(created_at)
