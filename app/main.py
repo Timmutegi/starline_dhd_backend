@@ -23,7 +23,7 @@ from app.api.v1 import training as training_api, notices as notices_api, reports
 from app.models import (
     user, client, staff, scheduling, task as task_model,
     vitals_log, shift_note, incident_report, notification as notification_model,
-    audit_log, meal_log, activity_log, training, notice, location
+    audit_log, meal_log, activity_log, training, notice, location, bowel_movement_log
 )
 
 logging.basicConfig(level=logging.INFO)

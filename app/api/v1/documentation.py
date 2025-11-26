@@ -23,9 +23,12 @@ from app.schemas.documentation import (
     MealLogUpdate,
     ActivityLogCreate,
     ActivityLogResponse,
-    ActivityLogUpdate
+    ActivityLogUpdate,
+    BowelMovementLogCreate,
+    BowelMovementLogResponse
 )
 from app.models.vitals_log import VitalsLog
+from app.models.bowel_movement_log import BowelMovementLog
 from app.models.shift_note import ShiftNote
 from app.models.incident_report import IncidentReport, IncidentTypeEnum, IncidentSeverityEnum, IncidentStatusEnum
 from app.models.meal_log import MealLog
@@ -371,6 +374,166 @@ async def get_vitals_logs(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve vitals logs: {str(e)}"
+        )
+
+# Bowel Movement Endpoints
+@router.get("/bowel-movements/types")
+async def get_stool_types(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get standard list of stool types
+    """
+    return [
+        {"type": "Type 1", "description": "Separate hard lumps, like nuts"},
+        {"type": "Type 2", "description": "Sausage-shaped but lumpy"},
+        {"type": "Type 3", "description": "Like a sausage, but with cracks on the surface"},
+        {"type": "Type 4", "description": "Like a sausage or snake, smooth and soft (ideal)"},
+        {"type": "Type 5", "description": "Soft blobs with clear-cut edges"},
+        {"type": "Type 6", "description": "Fluffy pieces with ragged edges, a mushy stool"},
+        {"type": "Type 7", "description": "Watery, no solid pieces"}
+    ]
+
+@router.post("/bowel-movements", response_model=BowelMovementLogResponse)
+async def create_bowel_movement_log(
+    log_data: BowelMovementLogCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new bowel movement log entry for a client.
+    """
+    try:
+        # Verify client exists and user has access
+        client = db.query(Client).filter(
+            and_(
+                Client.id == log_data.client_id,
+                Client.organization_id == current_user.organization_id
+            )
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        # Verify client is assigned to the staff member
+        if not verify_client_assignment(db, current_user.id, log_data.client_id, current_user.organization_id):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients assigned to you"
+            )
+
+        # Verify documentation is being created during an active shift
+        user_tz = current_user.timezone or (current_user.organization.timezone if current_user.organization else "UTC")
+        if not verify_shift_time(db, current_user.id, log_data.client_id, current_user.organization_id, user_tz):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create documentation for clients during your scheduled shift time"
+            )
+
+        # Verify staff member is clocked in
+        verify_clocked_in(db, current_user.id, current_user.organization_id)
+
+        # Create log entry
+        bm_log = BowelMovementLog(
+            id=uuid.uuid4(),
+            client_id=log_data.client_id,
+            staff_id=current_user.id,
+            organization_id=current_user.organization_id,
+            stool_type=log_data.stool_type,
+            stool_color=log_data.stool_color,
+            additional_information=log_data.additional_information,
+            recorded_at=log_data.recorded_at or datetime.now(timezone.utc).replace(tzinfo=None),
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None)
+        )
+
+        db.add(bm_log)
+        db.commit()
+        db.refresh(bm_log)
+
+        return BowelMovementLogResponse(
+            id=str(bm_log.id),
+            client_id=str(bm_log.client_id),
+            client_name=f"{client.first_name} {client.last_name}",
+            staff_id=str(bm_log.staff_id),
+            staff_name=f"{current_user.first_name} {current_user.last_name}",
+            stool_type=bm_log.stool_type,
+            stool_color=bm_log.stool_color,
+            additional_information=bm_log.additional_information,
+            recorded_at=bm_log.recorded_at,
+            created_at=bm_log.created_at
+        )
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create bowel movement log: {str(e)}"
+        )
+
+@router.get("/bowel-movements")
+async def get_bowel_movement_logs(
+    client_id: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get bowel movement logs with optional filtering
+    """
+    try:
+        query = db.query(BowelMovementLog).filter(
+            BowelMovementLog.organization_id == current_user.organization_id
+        )
+
+        if client_id:
+            query = query.filter(BowelMovementLog.client_id == client_id)
+
+        if date_from:
+            query = query.filter(func.date(BowelMovementLog.recorded_at) >= date_from)
+
+        if date_to:
+            query = query.filter(func.date(BowelMovementLog.recorded_at) <= date_to)
+
+        # Get total count before pagination
+        total = query.count()
+
+        logs = query.order_by(BowelMovementLog.recorded_at.desc()).offset(offset).limit(limit).all()
+
+        results = []
+        for log in logs:
+            client = db.query(Client).filter(Client.id == log.client_id).first()
+            staff = db.query(User).filter(User.id == log.staff_id).first()
+
+            results.append({
+                "id": str(log.id),
+                "client_id": str(log.client_id),
+                "client_name": f"{client.first_name} {client.last_name}" if client else "Unknown",
+                "staff_id": str(log.staff_id),
+                "staff_name": f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
+                "stool_type": log.stool_type,
+                "stool_color": log.stool_color,
+                "additional_information": log.additional_information,
+                "recorded_at": log.recorded_at,
+                "created_at": log.created_at
+            })
+
+        return {
+            "data": results,
+            "pagination": {
+                "total": total,
+                "page": (offset // limit) + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "pages": (total + limit - 1) // limit if limit > 0 else 1
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve bowel movement logs: {str(e)}"
         )
 
 # Shift Notes Endpoints

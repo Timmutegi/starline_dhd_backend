@@ -49,6 +49,29 @@ class VitalsLogResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# Bowel Movement Schemas
+class BowelMovementLogCreate(BaseModel):
+    client_id: str = Field(..., description="Client ID")
+    stool_type: str = Field(..., description="Stool type (Type 1 - Type 7)")
+    stool_color: Optional[str] = Field(None, max_length=50, description="Color of the stool")
+    additional_information: Optional[str] = Field(None, max_length=1000, description="Additional observations")
+    recorded_at: Optional[datetime] = Field(None, description="Time when bowel movement was recorded")
+
+class BowelMovementLogResponse(BaseModel):
+    id: str
+    client_id: str
+    client_name: str
+    staff_id: str
+    staff_name: str
+    stool_type: str
+    stool_color: Optional[str]
+    additional_information: Optional[str]
+    recorded_at: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 # Shift Notes Schemas
 class ShiftNoteCreate(BaseModel):
     client_id: str = Field(..., description="Client ID")
