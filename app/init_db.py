@@ -12,6 +12,8 @@ from app.models.incident_report import IncidentReport  # Import incident report 
 from app.models.notification import Notification  # Import notification model
 from app.models.shift_note import ShiftNote  # Import shift note model
 from app.models.task import Task  # Import task model
+from app.models.bowel_movement_log import BowelMovementLog  # Import bowel movement log model
+from app.models.sleep_log import SleepLog  # Import sleep log model
 from app.core.config import settings
 import logging
 import uuid

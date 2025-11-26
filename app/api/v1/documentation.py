@@ -25,10 +25,13 @@ from app.schemas.documentation import (
     ActivityLogResponse,
     ActivityLogUpdate,
     BowelMovementLogCreate,
-    BowelMovementLogResponse
+    BowelMovementLogResponse,
+    SleepLogCreate,
+    SleepLogResponse
 )
 from app.models.vitals_log import VitalsLog
 from app.models.bowel_movement_log import BowelMovementLog
+from app.models.sleep_log import SleepLog
 from app.models.shift_note import ShiftNote
 from app.models.incident_report import IncidentReport, IncidentTypeEnum, IncidentSeverityEnum, IncidentStatusEnum
 from app.models.meal_log import MealLog
@@ -534,6 +537,166 @@ async def get_bowel_movement_logs(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve bowel movement logs: {str(e)}"
+        )
+
+# Sleep Log Endpoints
+@router.post("/sleep-logs", response_model=SleepLogResponse)
+async def create_sleep_log(
+    log_data: SleepLogCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new sleep log for a client
+    """
+    try:
+        # Validate client exists
+        client = db.query(Client).filter(Client.id == log_data.client_id).first()
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        # Get staff record for current user
+        staff = db.query(Staff).filter(Staff.user_id == current_user.id).first()
+        if not staff:
+            raise HTTPException(status_code=404, detail="No staff record found for current user")
+
+        # Verify client assignment
+        if not verify_client_assignment(db, current_user.id, str(log_data.client_id), str(current_user.organization_id)):
+            raise HTTPException(status_code=403, detail="You can only create documentation for clients assigned to you")
+
+        # Verify shift time
+        if not verify_shift_time(db, current_user.id, str(log_data.client_id), str(current_user.organization_id), current_user.timezone or "UTC"):
+            raise HTTPException(status_code=403, detail="You can only create documentation during your assigned shift time")
+
+        # Verify clocked in
+        if not verify_clocked_in(db, current_user.id, str(current_user.organization_id)):
+            raise HTTPException(status_code=403, detail="You must be clocked in to create documentation")
+
+        # Calculate total sleep minutes
+        total_sleep_minutes = 0
+        for period in log_data.sleep_periods:
+            start_h, start_m = map(int, period.start_time.split(':'))
+            end_h, end_m = map(int, period.end_time.split(':'))
+            
+            start_total = start_h * 60 + start_m
+            end_total = end_h * 60 + end_m
+            
+            # Handle overnight periods
+            if end_total <= start_total:
+                end_total += 24 * 60
+            
+            total_sleep_minutes += (end_total - start_total)
+
+        # Convert sleep periods to JSON format
+        sleep_periods_json = [
+            {"start_time": p.start_time, "end_time": p.end_time}
+            for p in log_data.sleep_periods
+        ]
+
+        # Create sleep log
+        sleep_log = SleepLog(
+            client_id=log_data.client_id,
+            staff_id=current_user.id,
+            organization_id=current_user.organization_id,
+            shift_date=log_data.shift_date,
+            sleep_periods=sleep_periods_json,
+            total_sleep_minutes=total_sleep_minutes,
+            notes=log_data.notes,
+            recorded_at=log_data.recorded_at or datetime.now(timezone.utc)
+        )
+
+        db.add(sleep_log)
+        db.commit()
+        db.refresh(sleep_log)
+
+        return {
+            "id": str(sleep_log.id),
+            "client_id": str(sleep_log.client_id),
+            "client_name": f"{client.first_name} {client.last_name}",
+            "staff_id": str(sleep_log.staff_id),
+            "staff_name": f"{current_user.first_name} {current_user.last_name}",
+            "shift_date": sleep_log.shift_date,
+            "sleep_periods": sleep_log.sleep_periods,
+            "total_sleep_minutes": sleep_log.total_sleep_minutes,
+            "notes": sleep_log.notes,
+            "recorded_at": sleep_log.recorded_at,
+            "created_at": sleep_log.created_at
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create sleep log: {str(e)}"
+        )
+
+@router.get("/sleep-logs")
+async def get_sleep_logs(
+    client_id: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get sleep logs with optional filtering
+    """
+    try:
+        query = db.query(SleepLog).filter(
+            SleepLog.organization_id == current_user.organization_id
+        )
+
+        if client_id:
+            query = query.filter(SleepLog.client_id == client_id)
+
+        if date_from:
+            query = query.filter(SleepLog.shift_date >= date_from)
+
+        if date_to:
+            query = query.filter(SleepLog.shift_date <= date_to)
+
+        # Get total count before pagination
+        total = query.count()
+
+        logs = query.order_by(SleepLog.shift_date.desc(), SleepLog.recorded_at.desc()).offset(offset).limit(limit).all()
+
+        results = []
+        for log in logs:
+            client = db.query(Client).filter(Client.id == log.client_id).first()
+            staff = db.query(User).filter(User.id == log.staff_id).first()
+
+            results.append({
+                "id": str(log.id),
+                "client_id": str(log.client_id),
+                "client_name": f"{client.first_name} {client.last_name}" if client else "Unknown",
+                "staff_id": str(log.staff_id),
+                "staff_name": f"{staff.first_name} {staff.last_name}" if staff else "Unknown",
+                "shift_date": log.shift_date,
+                "sleep_periods": log.sleep_periods,
+                "total_sleep_minutes": log.total_sleep_minutes,
+                "notes": log.notes,
+                "recorded_at": log.recorded_at,
+                "created_at": log.created_at
+            })
+
+        return {
+            "data": results,
+            "pagination": {
+                "total": total,
+                "page": (offset // limit) + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "pages": (total + limit - 1) // limit if limit > 0 else 1
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve sleep logs: {str(e)}"
         )
 
 # Shift Notes Endpoints

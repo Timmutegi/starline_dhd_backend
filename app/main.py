@@ -9,6 +9,14 @@ import logging
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.middleware.audit_middleware import AuditMiddleware
+
+# Import all models to ensure they're registered with SQLAlchemy before table creation
+from app.models import (
+    user, bowel_movement_log, sleep_log, client, staff, scheduling, task as task_model,
+    vitals_log, shift_note, incident_report, notification as notification_model,
+    audit_log, meal_log, activity_log, training, notice, location
+)
+
 from app.api.v1.auth import login, logout, password
 from app.api.v1.users import crud as user_crud
 from app.api.v1.clients import router as client_router
@@ -19,12 +27,7 @@ from app.api.v1.scheduling import time_clock, appointments, availability, calend
 from app.api.v1 import dashboard, documentation, notifications, tasks, admin, manager, audit, client_portal, locations
 from app.api.v1 import training as training_api, notices as notices_api, reports, documents as documents_api
 
-# Import all models to ensure they're registered with SQLAlchemy before table creation
-from app.models import (
-    user, client, staff, scheduling, task as task_model,
-    vitals_log, shift_note, incident_report, notification as notification_model,
-    audit_log, meal_log, activity_log, training, notice, location, bowel_movement_log
-)
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

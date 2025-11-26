@@ -72,6 +72,96 @@ class BowelMovementLogResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# Sleep Log Schemas
+class SleepPeriod(BaseModel):
+    start_time: str = Field(..., description="Start time in HH:MM format (24-hour)")
+    end_time: str = Field(..., description="End time in HH:MM format (24-hour)")
+
+    @validator('start_time', 'end_time')
+    def validate_time_format(cls, v):
+        """Validate time format and 30-minute intervals"""
+        import re
+        if not re.match(r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$', v):
+            raise ValueError('Time must be in HH:MM format (24-hour)')
+        
+        # Validate 30-minute intervals
+        hour, minute = map(int, v.split(':'))
+        if minute not in [0, 30]:
+            raise ValueError('Time must be in 30-minute intervals (00 or 30)')
+        
+        return v
+
+    @validator('end_time')
+    def validate_end_after_start(cls, v, values):
+        """Validate end time is after start time"""
+        if 'start_time' in values:
+            start = values['start_time']
+            start_hour, start_min = map(int, start.split(':'))
+            end_hour, end_min = map(int, v.split(':'))
+            
+            start_total = start_hour * 60 + start_min
+            end_total = end_hour * 60 + end_min
+            
+            # Handle overnight periods (end time can be less than start for overnight)
+            # This is valid for shift work
+            if end_total <= start_total:
+                # Allow overnight periods
+                pass
+            
+        return v
+
+class SleepLogCreate(BaseModel):
+    client_id: str = Field(..., description="Client ID")
+    shift_date: date = Field(..., description="Date of the shift")
+    sleep_periods: List[SleepPeriod] = Field(..., description="List of sleep periods")
+    notes: Optional[str] = Field(None, max_length=1000, description="Additional observations")
+    recorded_at: Optional[datetime] = Field(None, description="Time when sleep log was recorded")
+
+    @validator('sleep_periods')
+    def validate_sleep_periods(cls, v):
+        """Validate sleep periods don't overlap"""
+        if not v:
+            raise ValueError('At least one sleep period is required')
+        
+        # Convert to minutes for easier comparison
+        periods = []
+        for period in v:
+            start_h, start_m = map(int, period.start_time.split(':'))
+            end_h, end_m = map(int, period.end_time.split(':'))
+            
+            start_total = start_h * 60 + start_m
+            end_total = end_h * 60 + end_m
+            
+            # Handle overnight (end < start means it crosses midnight)
+            if end_total <= start_total:
+                end_total += 24 * 60  # Add 24 hours
+            
+            periods.append((start_total, end_total))
+        
+        # Check for overlaps
+        periods.sort()
+        for i in range(len(periods) - 1):
+            if periods[i][1] > periods[i + 1][0]:
+                raise ValueError('Sleep periods cannot overlap')
+        
+        return v
+
+class SleepLogResponse(BaseModel):
+    id: str
+    client_id: str
+    client_name: str
+    staff_id: str
+    staff_name: str
+    shift_date: date
+    sleep_periods: List[Dict[str, str]]
+    total_sleep_minutes: int
+    notes: Optional[str]
+    recorded_at: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 # Shift Notes Schemas
 class ShiftNoteCreate(BaseModel):
     client_id: str = Field(..., description="Client ID")

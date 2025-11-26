@@ -64,6 +64,7 @@ class Client(PHIAuditMixin, Base):
     incident_reports = relationship("IncidentReport", back_populates="client", cascade="all, delete-orphan")
     shift_notes = relationship("ShiftNote", back_populates="client", cascade="all, delete-orphan")
     bowel_movement_logs = relationship("BowelMovementLog", back_populates="client", cascade="all, delete-orphan")
+    sleep_logs = relationship("SleepLog", back_populates="client", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="client", cascade="all, delete-orphan")
     staff_assignments = relationship("StaffAssignment", foreign_keys="[StaffAssignment.client_id]", cascade="all, delete-orphan", overlaps="client")
     # meal_logs and activity_logs relationships are accessed via queries, not ORM relationships
