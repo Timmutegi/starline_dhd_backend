@@ -817,6 +817,23 @@ async def get_my_assigned_clients(
         from app.models.shift_note import ShiftNote
         from app.models.incident_report import IncidentReport
         from sqlalchemy import func
+        from datetime import time as dt_time
+
+        # Helper function to normalize datetime to UTC timezone-aware
+        def normalize_to_utc(dt):
+            """Convert any datetime to UTC timezone-aware datetime"""
+            if dt is None:
+                return None
+            if isinstance(dt, datetime):
+                if dt.tzinfo is None:
+                    # Naive datetime - assume UTC
+                    return dt.replace(tzinfo=timezone.utc)
+                else:
+                    # Already timezone-aware
+                    return dt
+            else:
+                # It's a date, convert to datetime at midnight UTC
+                return datetime.combine(dt, dt_time.min, tzinfo=timezone.utc)
 
         # Query most recent timestamp from each documentation type
         latest_timestamps = []
@@ -826,44 +843,35 @@ async def get_my_assigned_clients(
             VitalsLog.client_id == client.id
         ).scalar()
         if latest_vital:
-            latest_timestamps.append(latest_vital)
+            latest_timestamps.append(normalize_to_utc(latest_vital))
 
         # Meals
         latest_meal = db.query(func.max(MealLog.meal_date)).filter(
             MealLog.client_id == client.id
         ).scalar()
         if latest_meal:
-            # Convert date to datetime for comparison
-            from datetime import datetime, time
-            if isinstance(latest_meal, datetime):
-                latest_timestamps.append(latest_meal)
-            else:
-                latest_timestamps.append(datetime.combine(latest_meal, time.min))
+            latest_timestamps.append(normalize_to_utc(latest_meal))
 
         # Activities
         latest_activity = db.query(func.max(ActivityLog.activity_date)).filter(
             ActivityLog.client_id == client.id
         ).scalar()
         if latest_activity:
-            from datetime import datetime, time
-            if isinstance(latest_activity, datetime):
-                latest_timestamps.append(latest_activity)
-            else:
-                latest_timestamps.append(datetime.combine(latest_activity, time.min))
+            latest_timestamps.append(normalize_to_utc(latest_activity))
 
         # Shift Notes
         latest_shift_note = db.query(func.max(ShiftNote.created_at)).filter(
             ShiftNote.client_id == client.id
         ).scalar()
         if latest_shift_note:
-            latest_timestamps.append(latest_shift_note)
+            latest_timestamps.append(normalize_to_utc(latest_shift_note))
 
         # Incidents
         latest_incident = db.query(func.max(IncidentReport.created_at)).filter(
             IncidentReport.client_id == client.id
         ).scalar()
         if latest_incident:
-            latest_timestamps.append(latest_incident)
+            latest_timestamps.append(normalize_to_utc(latest_incident))
 
         # Get the most recent timestamp
         response.last_interaction = max(latest_timestamps) if latest_timestamps else None
