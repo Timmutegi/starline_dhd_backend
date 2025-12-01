@@ -50,6 +50,7 @@ slowapi==0.1.9
 # Monitoring
 prometheus-client==0.20.0
 sentry-sdk[fastapi]==2.5.1
+psutil==5.9.8
 
 # Background tasks
 celery==5.4.0

@@ -27,6 +27,14 @@ class NoticeCategory(str, enum.Enum):
     EMERGENCY = "emergency"
 
 
+class NoticeTargetType(str, enum.Enum):
+    """Notice target audience types"""
+    ALL_USERS = "all_users"              # All users excluding clients
+    SPECIFIC_USERS = "specific_users"    # Specific individuals
+    CLIENT_ASSIGNMENT = "client_assignment"  # Staff assigned to a specific client
+    LOCATION = "location"                # Staff at a specific location
+
+
 class Notice(Base):
     """Notice/Announcement model"""
     __tablename__ = "notices"
@@ -44,8 +52,11 @@ class Notice(Base):
     category = Column(SQLEnum(NoticeCategory), nullable=False, default=NoticeCategory.GENERAL)
 
     # Targeting
+    target_type = Column(SQLEnum(NoticeTargetType), nullable=False, default=NoticeTargetType.ALL_USERS, comment="Type of audience targeting")
     target_roles = Column(JSON, nullable=True, comment="List of role IDs, null means all roles")
-    target_users = Column(JSON, nullable=True, comment="List of specific user IDs, null means all users")
+    target_users = Column(JSON, nullable=True, comment="List of specific user IDs for SPECIFIC_USERS target type")
+    target_client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, comment="Client ID for CLIENT_ASSIGNMENT target type")
+    target_location_id = Column(UUID(as_uuid=True), ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, comment="Location ID for LOCATION target type")
 
     # Display control
     is_active = Column(Boolean, default=True)
@@ -67,6 +78,8 @@ class Notice(Base):
     organization = relationship("Organization")
     creator = relationship("User", foreign_keys=[created_by])
     read_receipts = relationship("NoticeReadReceipt", back_populates="notice", cascade="all, delete-orphan")
+    target_client = relationship("Client", foreign_keys=[target_client_id])
+    target_location = relationship("Location", foreign_keys=[target_location_id])
 
 
 class NoticeReadReceipt(Base):

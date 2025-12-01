@@ -5,6 +5,8 @@ from app.core.database import get_db
 from app.models.user import User, UserSession, AuthAuditLog
 from app.middleware.auth import get_current_user
 from app.schemas.auth import MessageResponse
+from app.services.audit_service import AuditService
+from app.models.audit_log import AuditAction
 
 router = APIRouter()
 
@@ -40,6 +42,23 @@ async def logout(
         ))
         db.commit()
 
+        # Log to main AuditLog table for admin visibility
+        try:
+            audit_service = AuditService(db)
+            audit_service.log_action(
+                action=AuditAction.LOGOUT,
+                resource_type="authentication",
+                user_id=str(current_user.id),
+                organization_id=str(current_user.organization_id) if current_user.organization_id else None,
+                resource_name=current_user.email,
+                ip_address=request.client.host,
+                user_agent=request.headers.get("user-agent"),
+                response_status=200
+            )
+        except Exception as e:
+            # Don't fail logout if audit logging fails
+            pass
+
     return MessageResponse(message="Logged out successfully", success=True)
 
 @router.post("/logout-all", response_model=MessageResponse)
@@ -65,6 +84,23 @@ async def logout_all(
         metadata=f"Revoked {len(sessions)} sessions"
     ))
     db.commit()
+
+    # Log to main AuditLog table for admin visibility
+    try:
+        audit_service = AuditService(db)
+        audit_service.log_action(
+            action=AuditAction.LOGOUT,
+            resource_type="authentication",
+            user_id=str(current_user.id),
+            organization_id=str(current_user.organization_id) if current_user.organization_id else None,
+            resource_name=f"{current_user.email} (all {len(sessions)} sessions)",
+            ip_address=request.client.host,
+            user_agent=request.headers.get("user-agent"),
+            response_status=200
+        )
+    except Exception as e:
+        # Don't fail logout if audit logging fails
+        pass
 
     return MessageResponse(
         message=f"Logged out from {len(sessions)} devices successfully",

@@ -468,9 +468,10 @@ async def get_my_shifts(
             if assignment:
                 client = assignment.client
 
-        # Get location
+        # Get location - check multiple sources
         location_name = ""
         if client:
+            # Priority 1: Check ClientAssignment for current location
             client_assignment = db.query(ClientAssignment).options(
                 joinedload(ClientAssignment.location)
             ).filter(
@@ -480,6 +481,15 @@ async def get_my_shifts(
 
             if client_assignment and client_assignment.location:
                 location_name = client_assignment.location.name
+
+            # Priority 2: Fall back to client's direct location_id (references locations table)
+            if not location_name and client.location_id:
+                from app.models.location import Location
+                direct_location = db.query(Location).filter(
+                    Location.id == client.location_id
+                ).first()
+                if direct_location:
+                    location_name = direct_location.name
 
         # Determine activity type based on shift time or default to "Client Shift"
         activity_type = "Client Shift"

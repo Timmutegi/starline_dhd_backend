@@ -48,16 +48,19 @@ class StaffMemberSummary(BaseModel):
     last_active: Optional[datetime] = Field(None, description="Last activity timestamp")
 
 class ClientOversightSummary(BaseModel):
-    client_id: str = Field(..., description="Client ID")
+    id: str = Field(..., description="Client UUID")
+    client_id: str = Field(..., description="Client code (human readable)")
     user_id: Optional[str] = Field(None, description="User ID if client has account")
     full_name: str = Field(..., description="Client full name")
-    client_code: str = Field(..., description="Client code")
     status: str = Field(..., description="Client status")
-    location: Optional[str] = Field(None, description="Client location")
+    location_id: Optional[str] = Field(None, description="Client location UUID")
+    location_name: Optional[str] = Field(None, description="Client location name")
     assigned_staff_count: int = Field(..., description="Number of assigned staff")
     documentation_completion: float = Field(..., description="Documentation completion %")
-    incidents_count: int = Field(default=0, description="Number of incidents")
-    last_shift_note: Optional[datetime] = Field(None, description="Last shift note timestamp")
+    risk_level: Optional[str] = Field(None, description="Client risk level")
+    recent_incidents: int = Field(default=0, description="Number of recent incidents")
+    last_service_date: Optional[datetime] = Field(None, description="Last service date")
+    next_appointment: Optional[datetime] = Field(None, description="Next scheduled appointment")
     care_plan_status: Optional[str] = Field(None, description="Care plan status")
 
 class PendingApproval(BaseModel):

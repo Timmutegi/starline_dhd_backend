@@ -14,8 +14,11 @@ from app.middleware.auth import get_current_user, require_permission
 from app.schemas.scheduling import (
     TimeClockEntryCreate, TimeClockEntryResponse,
     ClockInRequest, ClockOutRequest,
-    OvertimeTrackingResponse, PaginatedResponse
+    OvertimeTrackingResponse, PaginatedResponse,
+    WorkedHoursSummary
 )
+from sqlalchemy import func, and_
+from calendar import monthrange
 from app.schemas.auth import MessageResponse
 import logging
 
@@ -624,3 +627,170 @@ async def calculate_overtime(
     except Exception as e:
         logger.error(f"Error calculating overtime: {str(e)}")
         # Don't fail the main transaction for overtime calculation errors
+
+
+@router.get("/worked-hours/me", response_model=WorkedHoursSummary)
+async def get_my_worked_hours(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get worked hours summary for the current user (DSP viewing their own hours).
+    """
+
+    # Get staff record for current user
+    staff = db.query(Staff).filter(
+        Staff.user_id == current_user.id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No staff record found for current user"
+        )
+
+    # Call the main function with the staff_id
+    return await get_staff_worked_hours(staff.id, db, current_user)
+
+
+@router.get("/worked-hours/{staff_id}", response_model=WorkedHoursSummary)
+async def get_staff_worked_hours(
+    staff_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get worked hours summary for a staff member.
+    Accessible by the staff member themselves, managers, and admins.
+    """
+
+    # Validate staff exists and belongs to organization
+    staff = db.query(Staff).filter(
+        Staff.id == staff_id,
+        Staff.organization_id == current_user.organization_id
+    ).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff member not found"
+        )
+
+    # Check permission: staff can view their own, managers/admins can view all
+    current_user_staff = db.query(Staff).filter(
+        Staff.user_id == current_user.id
+    ).first()
+
+    is_own_record = current_user_staff and current_user_staff.id == staff_id
+
+    # Check if user has manager/admin role - handle None role gracefully
+    # Normalize role name for comparison: lowercase and remove spaces
+    is_manager_or_admin = False
+    if current_user.role is not None:
+        role_name_normalized = current_user.role.name.lower().replace(' ', '').replace('_', '')
+        # Check if the role name contains key words indicating admin/manager level
+        admin_keywords = ['admin', 'manager', 'supervisor', 'superadmin', 'hrmanager']
+        is_manager_or_admin = any(keyword in role_name_normalized for keyword in admin_keywords)
+
+    if not is_own_record and not is_manager_or_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this staff member's hours"
+        )
+
+    try:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        today = now.date()
+
+        # Calculate week start (Monday)
+        days_since_monday = today.weekday()
+        week_start = today - timedelta(days=days_since_monday)
+        week_end = week_start + timedelta(days=6)
+
+        # Calculate month start/end
+        month_start = today.replace(day=1)
+        _, last_day = monthrange(today.year, today.month)
+        month_end = today.replace(day=last_day)
+
+        # Calculate year start/end
+        year_start = date(today.year, 1, 1)
+        year_end = date(today.year, 12, 31)
+
+        # Get current week overtime record
+        week_record = db.query(OvertimeTracking).filter(
+            OvertimeTracking.staff_id == staff_id,
+            OvertimeTracking.week_start_date == week_start
+        ).first()
+
+        current_week_hours = float(week_record.total_hours) if week_record else 0.0
+        current_week_regular = float(week_record.regular_hours) if week_record else 0.0
+        current_week_overtime = float(week_record.overtime_hours) if week_record else 0.0
+
+        # Calculate month hours from overtime tracking
+        month_records = db.query(OvertimeTracking).filter(
+            OvertimeTracking.staff_id == staff_id,
+            OvertimeTracking.week_start_date >= month_start,
+            OvertimeTracking.week_start_date <= month_end
+        ).all()
+
+        current_month_hours = sum(float(r.total_hours) for r in month_records)
+
+        # Calculate year hours from overtime tracking
+        year_records = db.query(OvertimeTracking).filter(
+            OvertimeTracking.staff_id == staff_id,
+            OvertimeTracking.week_start_date >= year_start,
+            OvertimeTracking.week_start_date <= year_end
+        ).all()
+
+        current_year_hours = sum(float(r.total_hours) for r in year_records)
+
+        # Get last clock in/out times
+        last_clock_in = db.query(TimeClockEntry).filter(
+            TimeClockEntry.staff_id == staff_id,
+            TimeClockEntry.entry_type == TimeEntryType.CLOCK_IN
+        ).order_by(TimeClockEntry.entry_datetime.desc()).first()
+
+        last_clock_out = db.query(TimeClockEntry).filter(
+            TimeClockEntry.staff_id == staff_id,
+            TimeClockEntry.entry_type == TimeEntryType.CLOCK_OUT
+        ).order_by(TimeClockEntry.entry_datetime.desc()).first()
+
+        # Determine if currently clocked in
+        is_clocked_in = False
+        if last_clock_in:
+            if not last_clock_out:
+                is_clocked_in = True
+            elif last_clock_in.entry_datetime > last_clock_out.entry_datetime:
+                is_clocked_in = True
+
+        # PTO eligible hours (typically based on regular hours worked)
+        # This is a simplified calculation - adjust based on your PTO policy
+        pto_eligible_hours = current_year_hours
+
+        # Get staff full name
+        staff_name = f"{staff.first_name} {staff.last_name}" if hasattr(staff, 'first_name') else staff.full_name
+
+        return WorkedHoursSummary(
+            staff_id=staff.id,
+            staff_name=staff_name,
+            current_week_hours=round(current_week_hours, 2),
+            current_week_regular=round(current_week_regular, 2),
+            current_week_overtime=round(current_week_overtime, 2),
+            current_month_hours=round(current_month_hours, 2),
+            current_year_hours=round(current_year_hours, 2),
+            last_clock_in=last_clock_in.entry_datetime if last_clock_in else None,
+            last_clock_out=last_clock_out.entry_datetime if last_clock_out else None,
+            is_currently_clocked_in=is_clocked_in,
+            pto_eligible_hours=round(pto_eligible_hours, 2),
+            week_start_date=week_start
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting worked hours for staff {staff_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve worked hours"
+        )

@@ -6,7 +6,7 @@ from app.models.scheduling import (
     ScheduleType, ScheduleStatus, ShiftStatus, ShiftType, AssignmentType,
     AvailabilityType, TimeOffType, RequestType, RequestStatus, SwapStatus,
     AppointmentType, AppointmentStatus, RecurrencePattern, TimeEntryType,
-    ConflictType, ConflictSeverity, EventType, EventVisibility
+    ConflictType, ConflictSeverity, EventType, EventVisibility, ShiftExchangeStatus
 )
 
 
@@ -528,6 +528,22 @@ class OvertimeTrackingResponse(BaseModel):
         from_attributes = True
 
 
+# Worked Hours Summary Schema
+class WorkedHoursSummary(BaseModel):
+    staff_id: UUID
+    staff_name: str
+    current_week_hours: float = Field(..., description="Hours worked this week (Mon-Sun)")
+    current_week_regular: float = Field(..., description="Regular hours this week")
+    current_week_overtime: float = Field(..., description="Overtime hours this week")
+    current_month_hours: float = Field(..., description="Hours worked this month")
+    current_year_hours: float = Field(..., description="Hours worked this year")
+    last_clock_in: Optional[datetime] = Field(None, description="Last clock in time")
+    last_clock_out: Optional[datetime] = Field(None, description="Last clock out time")
+    is_currently_clocked_in: bool = Field(..., description="Whether staff is currently clocked in")
+    pto_eligible_hours: float = Field(..., description="Hours eligible for PTO calculation")
+    week_start_date: date = Field(..., description="Start of current week (Monday)")
+
+
 # Reporting Schemas
 class ScheduleUtilizationReport(BaseModel):
     total_shifts: int
@@ -558,3 +574,82 @@ class PaginatedResponse(BaseModel):
     page: int
     size: int
     pages: int
+
+
+# ==================== Shift Exchange Request Schemas (3-Step Workflow) ====================
+
+class ShiftExchangeRequestCreate(BaseModel):
+    """Schema for DSP to create a shift exchange request"""
+    requester_shift_id: UUID = Field(..., description="ID of the requester's shift they want to exchange")
+    target_shift_id: UUID = Field(..., description="ID of the target shift they want to get")
+    reason: Optional[str] = Field(None, max_length=1000, description="Reason for the exchange request")
+
+
+class ShiftExchangeRequestPeerResponse(BaseModel):
+    """Schema for target DSP to accept/decline the exchange request"""
+    notes: Optional[str] = Field(None, max_length=500, description="Optional notes from the peer")
+
+
+class ShiftExchangeRequestManagerResponse(BaseModel):
+    """Schema for manager to approve/deny the exchange request"""
+    notes: Optional[str] = Field(None, max_length=500, description="Optional notes from the manager")
+
+
+class StaffShiftInfo(BaseModel):
+    """Staff and shift info for exchange request responses"""
+    staff_id: UUID
+    staff_name: str
+    staff_email: Optional[str] = None
+    shift_id: UUID
+    shift_date: date
+    start_time: time
+    end_time: time
+    shift_type: str
+    client_name: Optional[str] = None
+    location_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ShiftExchangeRequestResponse(BaseModel):
+    """Response schema for shift exchange requests"""
+    id: UUID
+    organization_id: UUID
+    status: ShiftExchangeStatus
+    reason: Optional[str] = None
+
+    # Requester info
+    requester: StaffShiftInfo
+
+    # Target info
+    target: StaffShiftInfo
+
+    # Timestamps
+    requested_at: datetime
+    peer_responded_at: Optional[datetime] = None
+    peer_response_notes: Optional[str] = None
+    manager_responded_by: Optional[UUID] = None
+    manager_responded_at: Optional[datetime] = None
+    manager_response_notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ColleagueShiftResponse(BaseModel):
+    """Response schema for showing colleague shifts available for exchange"""
+    shift_id: UUID
+    staff_id: UUID
+    staff_name: str
+    shift_date: date
+    start_time: time
+    end_time: time
+    shift_type: str
+    client_name: Optional[str] = None
+    location_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True

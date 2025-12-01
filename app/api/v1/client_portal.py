@@ -4,7 +4,7 @@ Provides read-only access for clients to view their own data
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, and_
 from typing import List, Optional
 from datetime import datetime, date, timedelta, timezone
 from uuid import UUID
@@ -522,6 +522,9 @@ async def create_help_request(
 ):
     """Create a new help request"""
     from app.models.task import Task, TaskPriorityEnum, TaskStatusEnum
+    from app.models.staff import Staff, StaffAssignment
+    from app.models.user import User, Role
+    from app.services.email_service import EmailService
 
     # Convert string priority to enum
     priority_mapping = {
@@ -544,11 +547,70 @@ async def create_help_request(
         status=TaskStatusEnum.PENDING,
         due_date=request_data.preferred_time.date() if request_data.preferred_time else None,
         created_by=client.user_id,
+        additional_data={"request_type": request_data.request_type}
     )
 
     db.add(task)
     db.commit()
     db.refresh(task)
+
+    print(f"[HelpRequest Created] ID: {task.id}, Client: {client.full_name}, Org: {task.organization_id}, Type: {request_data.request_type}")
+
+    # Send email notifications to assigned staff and managers
+    try:
+        client_name = client.full_name or f"{client.first_name} {client.last_name}"
+        submitted_at = task.created_at.strftime("%B %d, %Y at %I:%M %p") if task.created_at else None
+        preferred_time_str = request_data.preferred_time.strftime("%B %d, %Y at %I:%M %p") if request_data.preferred_time else None
+
+        # Get staff assigned to this client
+        assigned_staff = db.query(Staff).join(StaffAssignment).filter(
+            StaffAssignment.client_id == client.id,
+            StaffAssignment.is_active == True
+        ).all()
+
+        # Send notification to each assigned staff member
+        for staff in assigned_staff:
+            if staff.user and staff.user.email:
+                staff_name = f"{staff.first_name} {staff.last_name}"
+                await EmailService.send_help_request_notification(
+                    to_email=staff.user.email,
+                    recipient_name=staff_name,
+                    client_name=client_name,
+                    request_type=request_data.request_type,
+                    title=request_data.title,
+                    description=request_data.description,
+                    priority=request_data.priority,
+                    preferred_time=preferred_time_str,
+                    submitted_at=submitted_at
+                )
+
+        # Get managers in the organization
+        manager_roles = ["manager", "hr_manager", "supervisor", "organization_admin"]
+        managers = db.query(User).join(Role).filter(
+            User.organization_id == client.organization_id,
+            func.lower(Role.name).in_(manager_roles),
+            User.status == "active"
+        ).all()
+
+        # Send notification to each manager
+        for manager in managers:
+            if manager.email:
+                manager_name = f"{manager.first_name} {manager.last_name}"
+                await EmailService.send_help_request_notification(
+                    to_email=manager.email,
+                    recipient_name=manager_name,
+                    client_name=client_name,
+                    request_type=request_data.request_type,
+                    title=request_data.title,
+                    description=request_data.description,
+                    priority=request_data.priority,
+                    preferred_time=preferred_time_str,
+                    submitted_at=submitted_at
+                )
+
+    except Exception as e:
+        # Log the error but don't fail the request
+        print(f"Error sending help request notifications: {str(e)}")
 
     return HelpRequestResponse(
         id=task.id,

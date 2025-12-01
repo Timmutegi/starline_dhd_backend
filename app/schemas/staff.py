@@ -22,7 +22,7 @@ from app.models.staff import (
 
 # Base schemas
 class StaffBase(BaseModel):
-    employee_id: str
+    employee_id: Optional[str] = None  # Auto-generated if not provided
     middle_name: Optional[str] = None
     preferred_name: Optional[str] = None
     mobile_phone: Optional[str] = None
@@ -56,9 +56,10 @@ class StaffCreate(StaffBase):
 
     @validator('employee_id')
     def validate_employee_id(cls, v):
-        if not v or len(v.strip()) == 0:
-            raise ValueError('Employee ID is required')
-        return v.strip()
+        # Allow None/empty - will be auto-generated
+        if v is not None and len(v.strip()) > 0:
+            return v.strip()
+        return None
 
 class StaffUpdate(BaseModel):
     middle_name: Optional[str] = None
@@ -480,6 +481,7 @@ class StaffSummary(BaseModel):
     employment_status: str  # Changed from EmploymentStatus enum to string
     hire_date: date
     last_login: Optional[datetime]
+    role_name: Optional[str] = None  # User's role name for filtering
 
     class Config:
         from_attributes = True

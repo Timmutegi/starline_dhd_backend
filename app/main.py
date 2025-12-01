@@ -26,6 +26,7 @@ from app.api.v1.scheduling import router as scheduling_router
 from app.api.v1.scheduling import time_clock, appointments, availability, calendar
 from app.api.v1 import dashboard, documentation, notifications, tasks, admin, manager, audit, client_portal, locations
 from app.api.v1 import training as training_api, notices as notices_api, reports, documents as documents_api
+from app.api.v1 import help_requests as help_requests_api
 
 
 
@@ -258,6 +259,12 @@ app.include_router(
     locations.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["Locations"]
+)
+
+app.include_router(
+    help_requests_api.router,
+    prefix=f"{settings.API_V1_STR}/help-requests",
+    tags=["Help Requests"]
 )
 
 if __name__ == "__main__":

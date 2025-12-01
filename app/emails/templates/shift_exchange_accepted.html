@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Shift Exchange Accepted - DHD</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; }
+        .email-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: linear-gradient(135deg, #4F46E5 0%, #6366f1 100%); padding: 40px 20px; text-align: center; }
+        .logo { font-size: 48px; font-weight: 800; color: #ffffff; letter-spacing: -1px; margin: 0; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+        .subtitle { color: rgba(255, 255, 255, 0.9); font-size: 13px; font-weight: 500; letter-spacing: 2px; margin-top: 8px; text-transform: uppercase; }
+        .content { padding: 48px 32px; }
+        .title { font-size: 28px; font-weight: 700; color: #111827; margin: 0 0 16px 0; text-align: center; }
+        .greeting { font-size: 16px; color: #374151; margin-bottom: 24px; line-height: 1.6; }
+        .message { font-size: 15px; color: #6b7280; line-height: 1.7; margin-bottom: 32px; }
+        .status-badge { display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; padding: 8px 24px; border-radius: 0px; font-weight: 600; font-size: 14px; margin-bottom: 24px; }
+        .exchange-box { background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); border: 2px dashed #e5e7eb; border-radius: 0px; padding: 32px; margin: 32px 0; }
+        .exchange-title { font-size: 18px; font-weight: 700; color: #4F46E5; margin: 0 0 16px 0; }
+        .shift-section { margin: 16px 0; padding: 16px; background: #ffffff; border-radius: 8px; }
+        .shift-label { font-size: 14px; font-weight: 700; color: #4F46E5; margin-bottom: 8px; }
+        .detail-row { margin: 8px 0; font-size: 14px; color: #374151; display: flex; }
+        .detail-label { font-weight: 700; min-width: 100px; }
+        .arrow-container { text-align: center; margin: 16px 0; }
+        .arrow { font-size: 24px; color: #10b981; }
+        .button-container { text-align: center; margin: 32px 0; }
+        .action-button { display: inline-block; background: linear-gradient(135deg, #4F46E5 0%, #6366f1 100%); color: #ffffff !important; text-decoration: none; padding: 16px 48px; border-radius: 0px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2); }
+        .info-box { background-color: #d1fae5; border-left: 4px solid #10b981; padding: 16px; margin: 24px 0; }
+        .info-text { color: #065f46; font-size: 14px; margin: 0; }
+        .footer { background: #111827; padding: 40px 32px; text-align: center; }
+        .footer-brand { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 20px; }
+        .footer-logo-letter { font-size: 28px; font-weight: 800; }
+        .footer-logo-d { color: #ffffff; }
+        .footer-logo-h { color: #4F46E5; }
+        .footer-tagline { font-size: 11px; color: #9ca3af; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 8px; }
+        .footer-text { color: #9ca3af; font-size: 13px; margin: 12px 0; }
+        .footer-link { color: #60a5fa; text-decoration: none; }
+        .footer-compliance { display: inline-block; background: rgba(79, 70, 229, 0.1); color: #818cf8; padding: 6px 16px; border-radius: 0px; font-size: 11px; font-weight: 600; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1 class="logo">DHD</h1>
+            <div class="subtitle">Daily Healthcare Docs</div>
+        </div>
+        <div class="content">
+            <h2 class="title">Shift Exchange Accepted</h2>
+            <div style="text-align: center;"><span class="status-badge">✓ Peer Accepted</span></div>
+            <div class="greeting"><strong>Hi {{recipient_name}},</strong></div>
+            <div class="message">Great news! {{accepter_name}} has accepted your shift exchange request. The request is now pending manager approval.</div>
+
+            <div class="exchange-box">
+                <div class="exchange-title">Exchange Details</div>
+
+                <div class="shift-section">
+                    <div class="shift-label">Your Shift (They'll Get):</div>
+                    <div class="detail-row"><span class="detail-label">Date:</span><span>{{requester_shift_date}}</span></div>
+                    <div class="detail-row"><span class="detail-label">Time:</span><span>{{requester_shift_time}}</span></div>
+                    {% if requester_client %}<div class="detail-row"><span class="detail-label">Client:</span><span>{{requester_client}}</span></div>{% endif %}
+                </div>
+
+                <div class="arrow-container"><span class="arrow">⇅</span></div>
+
+                <div class="shift-section">
+                    <div class="shift-label">Their Shift (You'll Get):</div>
+                    <div class="detail-row"><span class="detail-label">Date:</span><span>{{target_shift_date}}</span></div>
+                    <div class="detail-row"><span class="detail-label">Time:</span><span>{{target_shift_time}}</span></div>
+                    {% if target_client %}<div class="detail-row"><span class="detail-label">Client:</span><span>{{target_client}}</span></div>{% endif %}
+                </div>
+            </div>
+
+            <div class="info-box">
+                <p class="info-text"><strong>Next Step:</strong> Your manager will review and approve the exchange. You'll be notified once a decision is made.</p>
+            </div>
+
+            <div class="button-container"><a href="{{dashboard_url}}" class="action-button">View Status</a></div>
+
+            <div class="message" style="margin-top: 32px; font-size: 14px;">Thank you!<br><strong>The DHD Team</strong></div>
+        </div>
+        <div class="footer">
+            <div class="footer-brand">
+                <span class="footer-logo-letter footer-logo-d">D</span>
+                <span class="footer-logo-letter footer-logo-h">H</span>
+                <span class="footer-logo-letter footer-logo-d">D</span>
+            </div>
+            <div class="footer-tagline">Daily Healthcare Docs</div>
+            <p class="footer-text">Need help? Contact us at<br><a href="mailto:{{contact_email}}" class="footer-link">{{contact_email}}</a></p>
+            <p class="footer-text" style="font-size: 11px; margin-top: 20px;">This email was sent to you regarding your DHD account.<br><a href="{{frontend_url}}" class="footer-link">Visit DHD</a></p>
+            <div class="footer-compliance">🔒 HIPAA COMPLIANT</div>
+            <p class="footer-text" style="font-size: 11px; margin-top: 20px; color: #6b7280;">© 2025 Daily Healthcare Docs (DHD). All rights reserved.<br>Empowering quality care, one document at a time.</p>
+        </div>
+    </div>
+</body>
+</html>

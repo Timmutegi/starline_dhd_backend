@@ -67,6 +67,15 @@ class SwapStatus(enum.Enum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
+
+class ShiftExchangeStatus(enum.Enum):
+    """Three-step approval workflow status for shift exchanges"""
+    PENDING_PEER = "pending_peer"      # Waiting for target DSP to accept
+    PENDING_MANAGER = "pending_manager"  # Peer accepted, waiting for manager approval
+    APPROVED = "approved"              # Manager approved
+    DENIED = "denied"                  # Either peer declined or manager denied
+    CANCELLED = "cancelled"            # Requester cancelled
+
 class AppointmentType(enum.Enum):
     MEDICAL = "medical"
     THERAPY = "therapy"
@@ -427,3 +436,50 @@ class CalendarEvent(Base):
 
     organization = relationship("Organization")
     creator = relationship("User", foreign_keys=[created_by])
+
+
+class ShiftExchangeRequest(Base):
+    """
+    Three-step shift exchange request model.
+    Flow: DSP A requests -> DSP B accepts/declines -> Manager approves/denies
+    """
+    __tablename__ = "shift_exchange_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+
+    # Requester info (DSP A)
+    requester_staff_id = Column(UUID(as_uuid=True), ForeignKey("staff.id", ondelete="CASCADE"), nullable=False)
+    requester_shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False)
+
+    # Target info (DSP B)
+    target_staff_id = Column(UUID(as_uuid=True), ForeignKey("staff.id", ondelete="CASCADE"), nullable=False)
+    target_shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False)
+
+    # Request details
+    reason = Column(Text, nullable=True)
+    status = Column(Enum(ShiftExchangeStatus), default=ShiftExchangeStatus.PENDING_PEER, nullable=False)
+
+    # Step 1: Request creation
+    requested_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False)
+
+    # Step 2: Peer response (DSP B)
+    peer_responded_at = Column(DateTime, nullable=True)
+    peer_response_notes = Column(Text, nullable=True)
+
+    # Step 3: Manager response
+    manager_responded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    manager_responded_at = Column(DateTime, nullable=True)
+    manager_response_notes = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    # Relationships
+    organization = relationship("Organization")
+    requester_staff = relationship("Staff", foreign_keys=[requester_staff_id])
+    requester_shift = relationship("Shift", foreign_keys=[requester_shift_id])
+    target_staff = relationship("Staff", foreign_keys=[target_staff_id])
+    target_shift = relationship("Shift", foreign_keys=[target_shift_id])
+    manager_responder = relationship("User", foreign_keys=[manager_responded_by])

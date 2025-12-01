@@ -5,13 +5,21 @@ from datetime import datetime, timezone, date, timedelta
 from typing import Optional, List
 from app.core.database import get_db
 from app.core.dependencies import get_manager_or_above
+from app.services.email_service import EmailService
+from app.core.config import settings
 from app.models.user import User
 from app.models.client import Client, CarePlan
 from app.models.staff import (
     Staff, StaffAssignment, TimeOffRequest, TimeOffStatus,
     StaffCertification, TrainingRecord, TrainingProgram, CertificationStatus, TrainingStatus
 )
-from app.models.scheduling import Shift, Appointment
+from app.models.scheduling import Shift, Appointment, AppointmentStatus, ShiftExchangeRequest, ShiftExchangeStatus
+from app.models.location import Location
+from app.schemas.scheduling import (
+    ShiftExchangeRequestResponse,
+    ShiftExchangeRequestManagerResponse,
+    StaffShiftInfo
+)
 from app.models.incident_report import IncidentReport, IncidentStatusEnum, IncidentSeverityEnum
 from app.models.shift_note import ShiftNote
 from app.models.task import Task, TaskStatusEnum
@@ -171,6 +179,33 @@ async def get_manager_dashboard(
                 }
             ))
 
+        # Shift exchange requests pending manager approval
+        pending_exchanges = db.query(ShiftExchangeRequest).filter(
+            ShiftExchangeRequest.organization_id == org_id,
+            ShiftExchangeRequest.status == ShiftExchangeStatus.PENDING_MANAGER
+        ).order_by(ShiftExchangeRequest.requested_at).limit(10).all()
+
+        for exchange in pending_exchanges:
+            requester_name = exchange.requester_staff.full_name if exchange.requester_staff else "Unknown"
+            target_name = exchange.target_staff.full_name if exchange.target_staff else "Unknown"
+            pending_approvals.append(PendingApproval(
+                id=str(exchange.id),
+                type="shift_exchange",
+                staff_id=str(exchange.requester_staff_id),
+                staff_name=requester_name,
+                title="Shift Exchange Request",
+                description=f"{requester_name} wants to exchange shifts with {target_name}",
+                submitted_at=exchange.requested_at,
+                priority="normal",
+                metadata={
+                    "requester_name": requester_name,
+                    "target_name": target_name,
+                    "requester_shift_id": str(exchange.requester_shift_id),
+                    "target_shift_id": str(exchange.target_shift_id),
+                    "peer_accepted_at": str(exchange.peer_responded_at) if exchange.peer_responded_at else None
+                }
+            ))
+
         # Recent shift notes (last 7 days) - for manager review
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
         recent_shift_notes = db.query(ShiftNote).filter(
@@ -252,7 +287,10 @@ async def get_staff_list(
     try:
         org_id = current_user.organization_id
 
-        query = db.query(Staff).join(User, Staff.user_id == User.id).filter(Staff.organization_id == org_id)
+        query = db.query(Staff).join(User, Staff.user_id == User.id).filter(
+            Staff.organization_id == org_id,
+            Staff.user_id != current_user.id  # Exclude the currently logged in user
+        )
 
         if status:
             query = query.filter(Staff.employment_status == status.upper())
@@ -428,23 +466,36 @@ async def get_clients_oversight(
                     if location:
                         location_name = location.name
 
+            # Get next appointment
+            next_appointment = db.query(Appointment).filter(
+                Appointment.client_id == client.id,
+                Appointment.start_datetime > datetime.utcnow(),
+                Appointment.status != AppointmentStatus.CANCELLED
+            ).order_by(Appointment.start_datetime.asc()).first()
+
             results.append(ClientOversightSummary(
-                client_id=str(client.id),
+                id=str(client.id),
+                client_id=client.client_id,  # Human readable client code
                 user_id=str(client.user_id) if client.user_id else None,
                 full_name=f"{client.first_name} {client.last_name}",
-                client_code=client.client_id,
                 status=client.status,
-                location=location_name,
+                location_id=str(client.location_id) if client.location_id else None,
+                location_name=location_name,
                 assigned_staff_count=assigned_staff_count,
                 documentation_completion=documentation_completion,
-                incidents_count=incidents_count,
-                last_shift_note=last_shift_note_time,
+                risk_level=client.risk_level if hasattr(client, 'risk_level') else None,
+                recent_incidents=incidents_count,
+                last_service_date=last_shift_note_time,
+                next_appointment=next_appointment.start_datetime if next_appointment else None,
                 care_plan_status=care_plan_status
             ))
 
         return results
 
     except Exception as e:
+        import traceback
+        print(f"ERROR in get_clients_oversight: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve clients: {str(e)}"
@@ -540,6 +591,54 @@ async def approve_time_off_request(
         time_off_request.approved_date = datetime.utcnow()
 
         db.commit()
+
+        # Send email notification to the staff member
+        try:
+            # Reload with staff relationship
+            time_off_request = db.query(TimeOffRequest).options(
+                joinedload(TimeOffRequest.staff).joinedload(Staff.user)
+            ).filter(TimeOffRequest.id == request_id).first()
+
+            staff_member = time_off_request.staff
+            staff_user = staff_member.user
+            manager_name = f"{current_user.first_name} {current_user.last_name}"
+
+            # Format dates
+            start_date_str = time_off_request.start_date.strftime("%a, %b %d, %Y")
+            end_date_str = time_off_request.end_date.strftime("%a, %b %d, %Y")
+            total_hours_str = str(time_off_request.total_hours)
+            request_type_str = time_off_request.request_type.value.replace("_", " ").title()
+
+            if action.action == "APPROVED":
+                await EmailService.send_time_off_approved_email(
+                    to_email=staff_user.email,
+                    staff_name=staff_member.full_name,
+                    manager_name=manager_name,
+                    request_type=request_type_str,
+                    start_date=start_date_str,
+                    end_date=end_date_str,
+                    total_hours=total_hours_str,
+                    manager_notes=action.notes
+                )
+            else:
+                await EmailService.send_time_off_denied_email(
+                    to_email=staff_user.email,
+                    staff_name=staff_member.full_name,
+                    manager_name=manager_name,
+                    request_type=request_type_str,
+                    start_date=start_date_str,
+                    end_date=end_date_str,
+                    total_hours=total_hours_str,
+                    denial_reason=action.notes
+                )
+
+            import logging
+            logging.info(f"Time-off {action.action.value} email sent to {staff_user.email}")
+
+        except Exception as email_error:
+            import logging
+            logging.error(f"Failed to send time-off decision email: {str(email_error)}")
+            # Don't fail the request if email fails
 
         return {
             "message": f"Time off request {action.action.value}",
@@ -1224,4 +1323,422 @@ async def create_notice(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to create notice: {str(e)}"
+        )
+
+
+# ============================================================================
+# SHIFT EXCHANGE MANAGEMENT ENDPOINTS
+# ============================================================================
+
+def _build_staff_shift_info(shift: Shift, staff: Staff, db: Session) -> StaffShiftInfo:
+    """Helper function to build StaffShiftInfo from shift and staff objects"""
+    client_name = None
+    if shift.client:
+        client_name = f"{shift.client.first_name} {shift.client.last_name}"
+
+    location_name = None
+    if shift.location_id:
+        location = db.query(Location).filter(Location.id == shift.location_id).first()
+        if location:
+            location_name = location.name
+
+    return StaffShiftInfo(
+        staff_id=staff.id,
+        staff_name=staff.full_name,
+        staff_email=staff.user.email if staff.user else None,
+        shift_id=shift.id,
+        shift_date=shift.shift_date,
+        start_time=shift.start_time,
+        end_time=shift.end_time,
+        shift_type=shift.shift_type.value if hasattr(shift.shift_type, 'value') else str(shift.shift_type),
+        client_name=client_name,
+        location_name=location_name
+    )
+
+
+def _build_exchange_response(exchange: ShiftExchangeRequest, db: Session) -> ShiftExchangeRequestResponse:
+    """Helper function to build ShiftExchangeRequestResponse from exchange request"""
+    requester_info = _build_staff_shift_info(exchange.requester_shift, exchange.requester_staff, db)
+    target_info = _build_staff_shift_info(exchange.target_shift, exchange.target_staff, db)
+
+    manager_name = None
+    if exchange.manager_responded_by:
+        from app.models.user import User
+        manager = db.query(User).filter(User.id == exchange.manager_responded_by).first()
+        if manager:
+            manager_name = f"{manager.first_name} {manager.last_name}"
+
+    return ShiftExchangeRequestResponse(
+        id=exchange.id,
+        organization_id=exchange.organization_id,
+        status=exchange.status,
+        reason=exchange.reason,
+        requester=requester_info,
+        target=target_info,
+        requested_at=exchange.requested_at,
+        peer_responded_at=exchange.peer_responded_at,
+        peer_response_notes=exchange.peer_response_notes,
+        manager_responded_by=exchange.manager_responded_by,
+        manager_responded_at=exchange.manager_responded_at,
+        manager_response_notes=exchange.manager_response_notes,
+        manager_name=manager_name,
+        created_at=exchange.created_at,
+        updated_at=exchange.updated_at
+    )
+
+
+@router.get("/shift-exchange-requests", response_model=List[ShiftExchangeRequestResponse])
+async def get_shift_exchange_requests(
+    status: Optional[str] = Query(None, description="Filter by status (pending_peer, pending_manager, approved, denied, cancelled)"),
+    limit: int = Query(50, le=100),
+    offset: int = Query(0),
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """
+    Get shift exchange requests for the organization.
+    Managers typically filter by 'pending_manager' to see requests awaiting their approval.
+    """
+    try:
+        org_id = current_user.organization_id
+
+        query = db.query(ShiftExchangeRequest).options(
+            joinedload(ShiftExchangeRequest.requester_staff).joinedload(Staff.user),
+            joinedload(ShiftExchangeRequest.target_staff).joinedload(Staff.user),
+            joinedload(ShiftExchangeRequest.requester_shift).joinedload(Shift.client),
+            joinedload(ShiftExchangeRequest.target_shift).joinedload(Shift.client)
+        ).filter(
+            ShiftExchangeRequest.organization_id == org_id
+        )
+
+        if status:
+            try:
+                status_enum = ShiftExchangeStatus(status.lower())
+                query = query.filter(ShiftExchangeRequest.status == status_enum)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+
+        exchanges = query.order_by(ShiftExchangeRequest.requested_at.desc()).offset(offset).limit(limit).all()
+
+        return [_build_exchange_response(exchange, db) for exchange in exchanges]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"ERROR in get_shift_exchange_requests: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve shift exchange requests: {str(e)}"
+        )
+
+
+@router.get("/shift-exchange-requests/pending", response_model=List[ShiftExchangeRequestResponse])
+async def get_pending_shift_exchange_requests(
+    limit: int = Query(50, le=100),
+    offset: int = Query(0),
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """
+    Get shift exchange requests pending manager approval.
+    Convenience endpoint that filters to only show requests in PENDING_MANAGER status.
+    """
+    try:
+        org_id = current_user.organization_id
+
+        query = db.query(ShiftExchangeRequest).options(
+            joinedload(ShiftExchangeRequest.requester_staff).joinedload(Staff.user),
+            joinedload(ShiftExchangeRequest.target_staff).joinedload(Staff.user),
+            joinedload(ShiftExchangeRequest.requester_shift).joinedload(Shift.client),
+            joinedload(ShiftExchangeRequest.target_shift).joinedload(Shift.client)
+        ).filter(
+            ShiftExchangeRequest.organization_id == org_id,
+            ShiftExchangeRequest.status == ShiftExchangeStatus.PENDING_MANAGER
+        )
+
+        exchanges = query.order_by(ShiftExchangeRequest.requested_at.desc()).offset(offset).limit(limit).all()
+
+        return [_build_exchange_response(exchange, db) for exchange in exchanges]
+
+    except Exception as e:
+        import traceback
+        print(f"ERROR in get_pending_shift_exchange_requests: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve pending shift exchange requests: {str(e)}"
+        )
+
+
+@router.get("/shift-exchange-requests/{exchange_id}", response_model=ShiftExchangeRequestResponse)
+async def get_shift_exchange_request(
+    exchange_id: str,
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """
+    Get a specific shift exchange request by ID
+    """
+    try:
+        org_id = current_user.organization_id
+
+        exchange = db.query(ShiftExchangeRequest).options(
+            joinedload(ShiftExchangeRequest.requester_staff).joinedload(Staff.user),
+            joinedload(ShiftExchangeRequest.target_staff).joinedload(Staff.user),
+            joinedload(ShiftExchangeRequest.requester_shift).joinedload(Shift.client),
+            joinedload(ShiftExchangeRequest.target_shift).joinedload(Shift.client)
+        ).filter(
+            ShiftExchangeRequest.id == exchange_id,
+            ShiftExchangeRequest.organization_id == org_id
+        ).first()
+
+        if not exchange:
+            raise HTTPException(status_code=404, detail="Shift exchange request not found")
+
+        return _build_exchange_response(exchange, db)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve shift exchange request: {str(e)}"
+        )
+
+
+@router.post("/shift-exchange-requests/{exchange_id}/approve")
+async def approve_shift_exchange_request(
+    exchange_id: str,
+    action: ShiftExchangeRequestManagerResponse,
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """
+    Approve a shift exchange request (Step 3 of 3-step workflow).
+    Only requests in PENDING_MANAGER status can be approved.
+    Upon approval, the shifts are swapped between the two staff members.
+    """
+    try:
+        org_id = current_user.organization_id
+
+        exchange = db.query(ShiftExchangeRequest).options(
+            joinedload(ShiftExchangeRequest.requester_shift),
+            joinedload(ShiftExchangeRequest.target_shift)
+        ).filter(
+            ShiftExchangeRequest.id == exchange_id,
+            ShiftExchangeRequest.organization_id == org_id
+        ).first()
+
+        if not exchange:
+            raise HTTPException(status_code=404, detail="Shift exchange request not found")
+
+        if exchange.status != ShiftExchangeStatus.PENDING_MANAGER:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot approve request in {exchange.status.value} status. Only requests in pending_manager status can be approved."
+            )
+
+        # Perform the shift swap
+        requester_shift = exchange.requester_shift
+        target_shift = exchange.target_shift
+
+        # Swap staff assignments
+        temp_staff_id = requester_shift.staff_id
+        requester_shift.staff_id = target_shift.staff_id
+        target_shift.staff_id = temp_staff_id
+
+        # Update exchange status
+        exchange.status = ShiftExchangeStatus.APPROVED
+        exchange.manager_responded_by = current_user.id
+        exchange.manager_responded_at = datetime.utcnow()
+        exchange.manager_response_notes = action.notes
+
+        db.commit()
+
+        # Send email notifications to both staff members
+        try:
+            # Reload exchange with all relationships
+            exchange = db.query(ShiftExchangeRequest).options(
+                joinedload(ShiftExchangeRequest.requester_staff).joinedload(Staff.user),
+                joinedload(ShiftExchangeRequest.target_staff).joinedload(Staff.user),
+                joinedload(ShiftExchangeRequest.requester_shift).joinedload(Shift.client),
+                joinedload(ShiftExchangeRequest.target_shift).joinedload(Shift.client)
+            ).filter(ShiftExchangeRequest.id == exchange_id).first()
+
+            manager_name = f"{current_user.first_name} {current_user.last_name}"
+            requester_staff = exchange.requester_staff
+            target_staff_obj = exchange.target_staff
+            requester_shift_obj = exchange.requester_shift
+            target_shift_obj = exchange.target_shift
+
+            # After swap: requester now has target's original shift
+            requester_new_shift_date = target_shift_obj.shift_date.strftime("%a, %b %d, %Y")
+            requester_new_shift_time = f"{target_shift_obj.start_time.strftime('%I:%M %p')} - {target_shift_obj.end_time.strftime('%I:%M %p')}"
+            requester_new_client = None
+            if target_shift_obj.client:
+                requester_new_client = f"{target_shift_obj.client.first_name} {target_shift_obj.client.last_name}"
+
+            # After swap: target now has requester's original shift
+            target_new_shift_date = requester_shift_obj.shift_date.strftime("%a, %b %d, %Y")
+            target_new_shift_time = f"{requester_shift_obj.start_time.strftime('%I:%M %p')} - {requester_shift_obj.end_time.strftime('%I:%M %p')}"
+            target_new_client = None
+            if requester_shift_obj.client:
+                target_new_client = f"{requester_shift_obj.client.first_name} {requester_shift_obj.client.last_name}"
+
+            # Email requester about their new shift
+            await EmailService.send_shift_exchange_approved_email(
+                to_email=requester_staff.user.email,
+                recipient_name=requester_staff.full_name,
+                manager_name=manager_name,
+                new_shift_date=requester_new_shift_date,
+                new_shift_time=requester_new_shift_time,
+                new_client=requester_new_client,
+                manager_notes=action.notes
+            )
+
+            # Email target about their new shift
+            await EmailService.send_shift_exchange_approved_email(
+                to_email=target_staff_obj.user.email,
+                recipient_name=target_staff_obj.full_name,
+                manager_name=manager_name,
+                new_shift_date=target_new_shift_date,
+                new_shift_time=target_new_shift_time,
+                new_client=target_new_client,
+                manager_notes=action.notes
+            )
+
+        except Exception as email_error:
+            import logging
+            logging.error(f"Failed to send shift exchange approved emails: {str(email_error)}")
+            # Don't fail the request if email fails
+
+        return {
+            "message": "Shift exchange approved successfully",
+            "exchange_id": str(exchange.id),
+            "status": exchange.status.value,
+            "requester_shift_id": str(requester_shift.id),
+            "target_shift_id": str(target_shift.id)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        print(f"ERROR in approve_shift_exchange_request: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to approve shift exchange request: {str(e)}"
+        )
+
+
+@router.post("/shift-exchange-requests/{exchange_id}/deny")
+async def deny_shift_exchange_request(
+    exchange_id: str,
+    action: ShiftExchangeRequestManagerResponse,
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """
+    Deny a shift exchange request.
+    Only requests in PENDING_MANAGER status can be denied by manager.
+    """
+    try:
+        org_id = current_user.organization_id
+
+        exchange = db.query(ShiftExchangeRequest).filter(
+            ShiftExchangeRequest.id == exchange_id,
+            ShiftExchangeRequest.organization_id == org_id
+        ).first()
+
+        if not exchange:
+            raise HTTPException(status_code=404, detail="Shift exchange request not found")
+
+        if exchange.status != ShiftExchangeStatus.PENDING_MANAGER:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot deny request in {exchange.status.value} status. Only requests in pending_manager status can be denied."
+            )
+
+        # Update exchange status
+        exchange.status = ShiftExchangeStatus.DENIED
+        exchange.manager_responded_by = current_user.id
+        exchange.manager_responded_at = datetime.utcnow()
+        exchange.manager_response_notes = action.notes
+
+        db.commit()
+
+        # Send email notifications to both staff members
+        try:
+            # Reload exchange with all relationships
+            exchange = db.query(ShiftExchangeRequest).options(
+                joinedload(ShiftExchangeRequest.requester_staff).joinedload(Staff.user),
+                joinedload(ShiftExchangeRequest.target_staff).joinedload(Staff.user),
+                joinedload(ShiftExchangeRequest.requester_shift).joinedload(Shift.client),
+                joinedload(ShiftExchangeRequest.target_shift).joinedload(Shift.client)
+            ).filter(ShiftExchangeRequest.id == exchange_id).first()
+
+            manager_name = f"{current_user.first_name} {current_user.last_name}"
+            requester_staff = exchange.requester_staff
+            target_staff_obj = exchange.target_staff
+            requester_shift_obj = exchange.requester_shift
+            target_shift_obj = exchange.target_shift
+
+            # Format shift details for requester
+            requester_shift_date = requester_shift_obj.shift_date.strftime("%a, %b %d, %Y")
+            requester_shift_time = f"{requester_shift_obj.start_time.strftime('%I:%M %p')} - {requester_shift_obj.end_time.strftime('%I:%M %p')}"
+            requester_client = None
+            if requester_shift_obj.client:
+                requester_client = f"{requester_shift_obj.client.first_name} {requester_shift_obj.client.last_name}"
+
+            # Format shift details for target
+            target_shift_date = target_shift_obj.shift_date.strftime("%a, %b %d, %Y")
+            target_shift_time = f"{target_shift_obj.start_time.strftime('%I:%M %p')} - {target_shift_obj.end_time.strftime('%I:%M %p')}"
+            target_client = None
+            if target_shift_obj.client:
+                target_client = f"{target_shift_obj.client.first_name} {target_shift_obj.client.last_name}"
+
+            # Email requester about denial (their shift stays the same)
+            await EmailService.send_shift_exchange_denied_by_manager_email(
+                to_email=requester_staff.user.email,
+                recipient_name=requester_staff.full_name,
+                manager_name=manager_name,
+                your_shift_date=requester_shift_date,
+                your_shift_time=requester_shift_time,
+                your_client=requester_client,
+                manager_notes=action.notes
+            )
+
+            # Email target about denial (their shift stays the same)
+            await EmailService.send_shift_exchange_denied_by_manager_email(
+                to_email=target_staff_obj.user.email,
+                recipient_name=target_staff_obj.full_name,
+                manager_name=manager_name,
+                your_shift_date=target_shift_date,
+                your_shift_time=target_shift_time,
+                your_client=target_client,
+                manager_notes=action.notes
+            )
+
+        except Exception as email_error:
+            import logging
+            logging.error(f"Failed to send shift exchange denied emails: {str(email_error)}")
+            # Don't fail the request if email fails
+
+        return {
+            "message": "Shift exchange denied",
+            "exchange_id": str(exchange.id),
+            "status": exchange.status.value
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to deny shift exchange request: {str(e)}"
         )

@@ -8,6 +8,8 @@ from app.schemas.auth import LoginRequest, LoginResponse, OTPVerification, Permi
 from app.schemas.user import UserResponse
 from app.core.config import settings
 from app.services.email_service import EmailService
+from app.services.audit_service import AuditService
+from app.models.audit_log import AuditAction
 from app.middleware.auth import get_current_user
 from pydantic import BaseModel
 import json
@@ -42,8 +44,8 @@ async def login(
             detail="Incorrect email or password"
         )
 
-    if user.lockout_until and user.lockout_until > datetime.now(timezone.utc):
-        remaining_time = (user.lockout_until - datetime.now(timezone.utc)).total_seconds() / 60
+    if user.lockout_until and user.lockout_until > datetime.utcnow():
+        remaining_time = (user.lockout_until - datetime.utcnow()).total_seconds() / 60
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail=f"Account is locked. Try again in {int(remaining_time)} minutes"
@@ -53,7 +55,7 @@ async def login(
         user.failed_login_attempts += 1
 
         if user.failed_login_attempts >= settings.MAX_LOGIN_ATTEMPTS:
-            user.lockout_until = datetime.now(timezone.utc) + timedelta(minutes=settings.LOCKOUT_DURATION_MINUTES)
+            user.lockout_until = datetime.utcnow() + timedelta(minutes=settings.LOCKOUT_DURATION_MINUTES)
             await EmailService.send_account_locked_email(
                 user.email,
                 user.full_name,
@@ -70,6 +72,23 @@ async def login(
             metadata=json.dumps({"attempts": user.failed_login_attempts})
         ))
         db.commit()
+
+        # Log failed login to main AuditLog table for admin visibility
+        try:
+            audit_service = AuditService(db)
+            audit_service.log_action(
+                action=AuditAction.ACCESS_DENIED,
+                resource_type="authentication",
+                user_id=str(user.id),
+                organization_id=str(user.organization_id) if user.organization_id else None,
+                resource_name=user.email,
+                ip_address=request.client.host,
+                user_agent=request.headers.get("user-agent"),
+                response_status=401,
+                error_message="Failed login attempt - incorrect password"
+            )
+        except Exception as e:
+            pass
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -132,6 +151,23 @@ async def login(
         success=True
     ))
     db.commit()
+
+    # Log to main AuditLog table for admin visibility
+    try:
+        audit_service = AuditService(db)
+        audit_service.log_action(
+            action=AuditAction.LOGIN,
+            resource_type="authentication",
+            user_id=str(user.id),
+            organization_id=str(user.organization_id) if user.organization_id else None,
+            resource_name=user.email,
+            ip_address=request.client.host,
+            user_agent=request.headers.get("user-agent"),
+            response_status=200
+        )
+    except Exception as e:
+        # Don't fail login if audit logging fails
+        pass
 
     user_response = UserResponse.model_validate(user)
 
