@@ -52,8 +52,48 @@ from app.schemas.manager import (
     CertificationAlert
 )
 from app.schemas.staff import TrainingProgramCreate, TrainingProgramResponse
+from pydantic import BaseModel, Field
 
 router = APIRouter()
+
+
+# Pydantic model for approval counts
+class ApprovalCountResponse(BaseModel):
+    time_off_pending: int = Field(..., description="Number of pending time-off requests")
+    shift_exchange_pending: int = Field(..., description="Number of pending shift exchange requests")
+    total_pending: int = Field(..., description="Total pending approvals")
+
+
+@router.get("/approvals/count", response_model=ApprovalCountResponse)
+async def get_approval_counts(
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """
+    Get counts of pending approvals for sidebar badge indicator.
+    Returns counts of pending time-off requests and shift exchange requests.
+    """
+    org_id = current_user.organization_id
+
+    # Count pending time-off requests
+    time_off_pending = db.query(TimeOffRequest).join(Staff).filter(
+        Staff.organization_id == org_id,
+        TimeOffRequest.status == TimeOffStatus.PENDING
+    ).count()
+
+    # Count pending shift exchange requests (pending_manager status)
+    shift_exchange_pending = db.query(ShiftExchangeRequest).filter(
+        ShiftExchangeRequest.organization_id == org_id,
+        ShiftExchangeRequest.status == ShiftExchangeStatus.PENDING_MANAGER
+    ).count()
+
+    total_pending = time_off_pending + shift_exchange_pending
+
+    return ApprovalCountResponse(
+        time_off_pending=time_off_pending,
+        shift_exchange_pending=shift_exchange_pending,
+        total_pending=total_pending
+    )
 
 @router.get("/dashboard", response_model=ManagerDashboardOverview)
 async def get_manager_dashboard(
@@ -487,7 +527,8 @@ async def get_clients_oversight(
                 recent_incidents=incidents_count,
                 last_service_date=last_shift_note_time,
                 next_appointment=next_appointment.start_datetime if next_appointment else None,
-                care_plan_status=care_plan_status
+                care_plan_status=care_plan_status,
+                required_documentation=client.required_documentation if hasattr(client, 'required_documentation') else None
             ))
 
         return results
@@ -540,6 +581,7 @@ async def get_time_off_requests(
                 start_date=request.start_date,
                 end_date=request.end_date,
                 days_requested=days_requested,
+                total_hours=float(request.total_hours) if request.total_hours else 0.0,
                 status=request.status.value,
                 reason=request.reason,
                 notes=None,
@@ -581,7 +623,9 @@ async def approve_time_off_request(
         if time_off_request.status != TimeOffStatus.PENDING:
             raise HTTPException(status_code=400, detail="Request already reviewed")
 
-        if action.action == "APPROVED":
+        # Check for approval (handle both uppercase and lowercase values)
+        is_approved = action.action.value.upper() == "APPROVED"
+        if is_approved:
             time_off_request.status = TimeOffStatus.APPROVED
         else:
             time_off_request.status = TimeOffStatus.DENIED
@@ -609,7 +653,7 @@ async def approve_time_off_request(
             total_hours_str = str(time_off_request.total_hours)
             request_type_str = time_off_request.request_type.value.replace("_", " ").title()
 
-            if action.action == "APPROVED":
+            if is_approved:
                 await EmailService.send_time_off_approved_email(
                     to_email=staff_user.email,
                     staff_name=staff_member.full_name,
@@ -633,7 +677,7 @@ async def approve_time_off_request(
                 )
 
             import logging
-            logging.info(f"Time-off {action.action.value} email sent to {staff_user.email}")
+            logging.info(f"Time-off {'approved' if is_approved else 'denied'} email sent to {staff_user.email}")
 
         except Exception as email_error:
             import logging
@@ -641,7 +685,7 @@ async def approve_time_off_request(
             # Don't fail the request if email fails
 
         return {
-            "message": f"Time off request {action.action.value}",
+            "message": f"Time off request {'approved' if is_approved else 'denied'}",
             "request_id": request_id,
             "status": time_off_request.status.value
         }

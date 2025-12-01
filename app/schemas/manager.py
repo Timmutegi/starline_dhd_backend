@@ -7,6 +7,9 @@ class ApprovalStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    # Support uppercase values from frontend
+    APPROVED_UPPER = "APPROVED"
+    DENIED = "DENIED"
 
 class TimeOffType(str, Enum):
     VACATION = "vacation"
@@ -62,6 +65,7 @@ class ClientOversightSummary(BaseModel):
     last_service_date: Optional[datetime] = Field(None, description="Last service date")
     next_appointment: Optional[datetime] = Field(None, description="Next scheduled appointment")
     care_plan_status: Optional[str] = Field(None, description="Care plan status")
+    required_documentation: Optional[List[str]] = Field(default=None, description="Required documentation types for this client")
 
 class PendingApproval(BaseModel):
     id: str = Field(..., description="Approval item ID")
@@ -99,6 +103,7 @@ class TimeOffRequestResponse(BaseModel):
     start_date: date = Field(..., description="Start date")
     end_date: date = Field(..., description="End date")
     days_requested: int = Field(..., description="Number of days requested")
+    total_hours: float = Field(..., description="Total hours requested")
     status: str = Field(..., description="Approval status")
     reason: Optional[str] = Field(None, description="Reason for request")
     notes: Optional[str] = Field(None, description="Additional notes")

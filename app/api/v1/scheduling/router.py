@@ -292,13 +292,49 @@ async def get_current_shift(
         time_on_shift = f"{hours}h {minutes}m"
 
     # Check documentation status
+    # Determine required documentation with priority:
+    # 1. Shift-specific override (if explicitly set - not None)
+    # 2. Client-specific requirement (from client.required_documentation) - PRIMARY SOURCE
+    # 3. Default fallback (["shift_note"])
     documentation_status = {}
     can_clock_out = True
     missing_documents = []
+    required_docs = None
 
-    if current_shift.client_id and current_shift.required_documentation:
+    # First: Check if shift has explicit override (not None)
+    if current_shift.required_documentation is not None and len(current_shift.required_documentation) > 0:
         required_docs = current_shift.required_documentation
+        logger.info(f"Using shift-specific required_documentation override: {required_docs}")
+    # Second: Use client's required documentation if available
+    elif current_shift.client_id and client and hasattr(client, 'required_documentation') and client.required_documentation:
+        required_docs = client.required_documentation
+        logger.info(f"Using client required_documentation: {required_docs}")
 
+    if not required_docs:
+        required_docs = ["shift_note"]  # Default fallback
+        logger.info(f"Using default required_documentation: {required_docs}")
+
+    # Calculate shift time range in UTC for documentation comparison
+    # Use the user's timezone to properly convert shift start/end times
+    shift_start_time = current_shift.start_time or datetime.min.time()
+    shift_end_time = current_shift.end_time or datetime.max.time()
+
+    # Create timezone-aware datetime for shift start and end in user's timezone
+    shift_start_local = user_timezone.localize(
+        datetime.combine(current_shift.shift_date, shift_start_time)
+    )
+    shift_end_local = user_timezone.localize(
+        datetime.combine(current_shift.shift_date, shift_end_time)
+    )
+
+    # Convert to UTC for database comparison
+    shift_start_utc = shift_start_local.astimezone(pytz.UTC)
+    shift_end_utc = shift_end_local.astimezone(pytz.UTC)
+
+    logger.info(f"Shift time range - Local: {shift_start_local} to {shift_end_local}")
+    logger.info(f"Shift time range - UTC: {shift_start_utc} to {shift_end_utc}")
+
+    if current_shift.client_id:
         for doc_type in required_docs:
             is_submitted = False
 
@@ -306,42 +342,72 @@ async def get_current_shift(
                 from app.models.vitals_log import VitalsLog
                 vitals = db.query(VitalsLog).filter(
                     VitalsLog.client_id == current_shift.client_id,
-                    VitalsLog.created_at >= datetime.combine(current_shift.shift_date, current_shift.start_time or datetime.min.time()),
-                    VitalsLog.created_at <= datetime.now(timezone.utc)
+                    VitalsLog.recorded_at >= shift_start_utc,
+                    VitalsLog.recorded_at <= shift_end_utc
                 ).first()
                 is_submitted = vitals is not None
 
             elif doc_type == "shift_note":
                 from app.models.shift_note import ShiftNote
+                # ShiftNote uses shift_date (Date) and created_at (DateTime)
                 note = db.query(ShiftNote).filter(
                     ShiftNote.client_id == current_shift.client_id,
-                    ShiftNote.shift_date == current_shift.shift_date
+                    ShiftNote.shift_date == current_shift.shift_date,
+                    ShiftNote.created_at >= shift_start_utc,
+                    ShiftNote.created_at <= shift_end_utc
                 ).first()
                 is_submitted = note is not None
 
             elif doc_type == "meal_log":
                 from app.models.meal_log import MealLog
+                # MealLog uses meal_date (DateTime) - need to check the time range
                 meal = db.query(MealLog).filter(
                     MealLog.client_id == current_shift.client_id,
-                    MealLog.meal_date == current_shift.shift_date
+                    MealLog.meal_date >= shift_start_utc,
+                    MealLog.meal_date <= shift_end_utc
                 ).first()
                 is_submitted = meal is not None
 
             elif doc_type == "incident_report":
                 from app.models.incident_report import IncidentReport
+                # IncidentReport uses incident_date (Date) and created_at (DateTime)
                 incident = db.query(IncidentReport).filter(
                     IncidentReport.client_id == current_shift.client_id,
-                    IncidentReport.incident_date == current_shift.shift_date
+                    IncidentReport.incident_date == current_shift.shift_date,
+                    IncidentReport.created_at >= shift_start_utc,
+                    IncidentReport.created_at <= shift_end_utc
                 ).first()
                 is_submitted = incident is not None
 
             elif doc_type == "activity_log":
                 from app.models.activity_log import ActivityLog
+                # ActivityLog uses activity_date (DateTime)
                 activity = db.query(ActivityLog).filter(
                     ActivityLog.client_id == current_shift.client_id,
-                    ActivityLog.activity_date == current_shift.shift_date
+                    ActivityLog.activity_date >= shift_start_utc,
+                    ActivityLog.activity_date <= shift_end_utc
                 ).first()
                 is_submitted = activity is not None
+
+            elif doc_type == "sleep_log":
+                from app.models.sleep_log import SleepLog
+                # SleepLog uses shift_date (Date) and recorded_at (DateTime)
+                sleep = db.query(SleepLog).filter(
+                    SleepLog.client_id == current_shift.client_id,
+                    SleepLog.shift_date == current_shift.shift_date,
+                    SleepLog.recorded_at >= shift_start_utc,
+                    SleepLog.recorded_at <= shift_end_utc
+                ).first()
+                is_submitted = sleep is not None
+
+            elif doc_type == "bowel_movement_log":
+                from app.models.bowel_movement_log import BowelMovementLog
+                bowel = db.query(BowelMovementLog).filter(
+                    BowelMovementLog.client_id == current_shift.client_id,
+                    BowelMovementLog.recorded_at >= shift_start_utc,
+                    BowelMovementLog.recorded_at <= shift_end_utc
+                ).first()
+                is_submitted = bowel is not None
 
             documentation_status[doc_type] = {
                 "required": True,
@@ -362,7 +428,7 @@ async def get_current_shift(
             "end_time": current_shift.end_time.strftime("%I:%M %p") if current_shift.end_time else None,
             "status": current_shift.status.value,
             "notes": current_shift.notes,
-            "required_documentation": current_shift.required_documentation or []
+            "required_documentation": required_docs
         },
         "client": {
             "id": str(client.id) if client else None,
@@ -780,6 +846,12 @@ async def create_shift(
         )
 
     try:
+        # If required_documentation is explicitly provided and not empty, use it
+        # Otherwise, set to None so the backend will use the client's requirements
+        required_docs = None
+        if shift_data.required_documentation and len(shift_data.required_documentation) > 0:
+            required_docs = shift_data.required_documentation
+
         new_shift = Shift(
             schedule_id=shift_data.schedule_id,
             staff_id=shift_data.staff_id,
@@ -794,7 +866,8 @@ async def create_shift(
             meal_end=shift_data.meal_end,
             shift_type=shift_data.shift_type,
             is_mandatory=shift_data.is_mandatory,
-            notes=shift_data.notes
+            notes=shift_data.notes,
+            required_documentation=required_docs
         )
 
         db.add(new_shift)
@@ -1148,6 +1221,29 @@ async def get_shift_documentation_status(
     # Get required documentation list
     required_docs = shift.required_documentation or []
 
+    # Get user's timezone for proper time conversion
+    user_timezone_str = current_user.timezone or "UTC"
+    try:
+        user_timezone = pytz.timezone(user_timezone_str)
+    except Exception:
+        user_timezone = pytz.UTC
+
+    # Calculate shift time range in UTC for documentation comparison
+    shift_start_time = shift.start_time or datetime.min.time()
+    shift_end_time = shift.end_time or datetime.max.time()
+
+    # Create timezone-aware datetime for shift start and end in user's timezone
+    shift_start_local = user_timezone.localize(
+        datetime.combine(shift.shift_date, shift_start_time)
+    )
+    shift_end_local = user_timezone.localize(
+        datetime.combine(shift.shift_date, shift_end_time)
+    )
+
+    # Convert to UTC for database comparison
+    shift_start_utc = shift_start_local.astimezone(pytz.UTC)
+    shift_end_utc = shift_end_local.astimezone(pytz.UTC)
+
     # Check which documents have been submitted
     documentation_status = {}
 
@@ -1158,8 +1254,8 @@ async def get_shift_documentation_status(
             from app.models.vitals_log import VitalsLog
             vitals = db.query(VitalsLog).filter(
                 VitalsLog.client_id == shift.client_id,
-                VitalsLog.created_at >= datetime.combine(shift.shift_date, shift.start_time or datetime.min.time()),
-                VitalsLog.created_at <= datetime.combine(shift.shift_date, shift.end_time or datetime.max.time())
+                VitalsLog.recorded_at >= shift_start_utc,
+                VitalsLog.recorded_at <= shift_end_utc
             ).first()
             is_submitted = vitals is not None
 
@@ -1167,7 +1263,9 @@ async def get_shift_documentation_status(
             from app.models.shift_note import ShiftNote
             note = db.query(ShiftNote).filter(
                 ShiftNote.client_id == shift.client_id,
-                ShiftNote.shift_date == shift.shift_date
+                ShiftNote.shift_date == shift.shift_date,
+                ShiftNote.created_at >= shift_start_utc,
+                ShiftNote.created_at <= shift_end_utc
             ).first()
             is_submitted = note is not None
 
@@ -1175,7 +1273,8 @@ async def get_shift_documentation_status(
             from app.models.meal_log import MealLog
             meal = db.query(MealLog).filter(
                 MealLog.client_id == shift.client_id,
-                MealLog.meal_date == shift.shift_date
+                MealLog.meal_date >= shift_start_utc,
+                MealLog.meal_date <= shift_end_utc
             ).first()
             is_submitted = meal is not None
 
@@ -1183,7 +1282,9 @@ async def get_shift_documentation_status(
             from app.models.incident_report import IncidentReport
             incident = db.query(IncidentReport).filter(
                 IncidentReport.client_id == shift.client_id,
-                IncidentReport.incident_date == shift.shift_date
+                IncidentReport.incident_date == shift.shift_date,
+                IncidentReport.created_at >= shift_start_utc,
+                IncidentReport.created_at <= shift_end_utc
             ).first()
             is_submitted = incident is not None
 
@@ -1191,9 +1292,29 @@ async def get_shift_documentation_status(
             from app.models.activity_log import ActivityLog
             activity = db.query(ActivityLog).filter(
                 ActivityLog.client_id == shift.client_id,
-                ActivityLog.activity_date == shift.shift_date
+                ActivityLog.activity_date >= shift_start_utc,
+                ActivityLog.activity_date <= shift_end_utc
             ).first()
             is_submitted = activity is not None
+
+        elif doc_type == "sleep_log":
+            from app.models.sleep_log import SleepLog
+            sleep = db.query(SleepLog).filter(
+                SleepLog.client_id == shift.client_id,
+                SleepLog.shift_date == shift.shift_date,
+                SleepLog.recorded_at >= shift_start_utc,
+                SleepLog.recorded_at <= shift_end_utc
+            ).first()
+            is_submitted = sleep is not None
+
+        elif doc_type == "bowel_movement_log":
+            from app.models.bowel_movement_log import BowelMovementLog
+            bowel = db.query(BowelMovementLog).filter(
+                BowelMovementLog.client_id == shift.client_id,
+                BowelMovementLog.recorded_at >= shift_start_utc,
+                BowelMovementLog.recorded_at <= shift_end_utc
+            ).first()
+            is_submitted = bowel is not None
 
         documentation_status[doc_type] = {
             "required": True,

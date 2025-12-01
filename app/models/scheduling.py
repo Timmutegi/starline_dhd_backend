@@ -192,7 +192,7 @@ class Shift(Base):
     status = Column(Enum(ShiftStatus), default=ShiftStatus.SCHEDULED, nullable=False)
     shift_type = Column(Enum(ShiftType), default=ShiftType.REGULAR, nullable=False)
     is_mandatory = Column(Boolean, default=False)
-    required_documentation = Column(ARRAY(String), nullable=True, default=["shift_note"])  # e.g., ["vitals_log", "shift_note", "meal_log", "incident_report"]
+    required_documentation = Column(ARRAY(String), nullable=True, default=None)  # Override client's documentation requirements; None means use client's settings
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

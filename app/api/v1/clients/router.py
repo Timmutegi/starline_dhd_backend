@@ -20,7 +20,8 @@ from app.models.client import (
     Client, ClientContact, ClientLocation, ClientAssignment,
     CarePlan, ClientNote, ClientMedication, ClientInsurance
 )
-from app.models.staff import Staff
+from app.models.staff import Staff, StaffAssignment
+from app.models.incident_report import IncidentReport
 from app.models.scheduling import Shift, ShiftStatus
 from app.schemas.client import (
     ClientCreate, ClientUpdate, ClientResponse, ClientListResponse,
@@ -144,6 +145,7 @@ async def create_client(
         secondary_diagnoses=client_data.secondary_diagnoses,
         allergies=client_data.allergies,
         dietary_restrictions=client_data.dietary_restrictions,
+        required_documentation=client_data.required_documentation or ["shift_note"],
         status="active",
         created_by=current_user.id
     )
@@ -229,7 +231,7 @@ async def list_clients(
     offset = (page - 1) * page_size
     clients = query.offset(offset).limit(page_size).all()
 
-    # Add user emails, organization name, and location info to response
+    # Add user emails, organization name, location info, and oversight metrics to response
     client_responses = []
     for client in clients:
         response = ClientResponse.model_validate(client)
@@ -248,6 +250,35 @@ async def list_clients(
             if location:
                 response.location_name = location.name
                 response.location_address = location.address
+
+        # Calculate assigned staff count from staff_assignments table
+        assigned_staff_count = db.query(StaffAssignment).filter(
+            StaffAssignment.client_id == client.id,
+            StaffAssignment.is_active == True
+        ).count()
+        response.assigned_staff_count = assigned_staff_count
+
+        # Calculate recent incidents (last 7 days)
+        from datetime import timedelta
+        seven_days_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
+        recent_incidents = db.query(IncidentReport).filter(
+            IncidentReport.client_id == client.id,
+            IncidentReport.created_at >= seven_days_ago
+        ).count()
+        response.recent_incidents = recent_incidents
+
+        # Get next scheduled appointment
+        from app.models.scheduling import Appointment
+        next_appt = db.query(Appointment).filter(
+            Appointment.client_id == client.id,
+            Appointment.start_datetime >= datetime.now(timezone.utc).replace(tzinfo=None)
+        ).order_by(Appointment.start_datetime.asc()).first()
+        if next_appt:
+            response.next_appointment = next_appt.start_datetime
+
+        # Set default values for fields that need more complex calculation
+        response.documentation_compliance = 0.0  # Would require calculating completion rate
+        response.risk_level = None  # Would require risk assessment logic
 
         client_responses.append(response)
 

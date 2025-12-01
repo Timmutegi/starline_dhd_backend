@@ -3,6 +3,17 @@ from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, date
 from uuid import UUID
 
+# Valid documentation types for client requirements
+VALID_DOCUMENTATION_TYPES = [
+    "vitals_log",
+    "shift_note",
+    "meal_log",
+    "sleep_log",
+    "bowel_movement_log",
+    "activity_log",
+    "incident_report"
+]
+
 # Type aliases using Literal for better validation
 ClientStatusType = Literal["active", "inactive", "discharged", "deceased", "on_hold"]
 GenderType = Literal["male", "female", "other", "prefer_not_to_say"]
@@ -26,6 +37,21 @@ class ClientBase(BaseModel):
     secondary_diagnoses: Optional[List[str]] = None
     allergies: Optional[List[str]] = None
     dietary_restrictions: Optional[List[str]] = None
+    required_documentation: Optional[List[str]] = Field(
+        default=["shift_note"],
+        description="Documentation types required for this client"
+    )
+
+    @validator('required_documentation', pre=True, always=True)
+    def validate_documentation_types(cls, v):
+        if v is None:
+            return ["shift_note"]
+        if not isinstance(v, list):
+            v = [v]
+        for doc_type in v:
+            if doc_type not in VALID_DOCUMENTATION_TYPES:
+                raise ValueError(f"Invalid documentation type: {doc_type}. Must be one of: {VALID_DOCUMENTATION_TYPES}")
+        return v
 
 class ClientCreate(ClientBase):
     email: EmailStr
@@ -52,8 +78,23 @@ class ClientUpdate(BaseModel):
     secondary_diagnoses: Optional[List[str]] = None
     allergies: Optional[List[str]] = None
     dietary_restrictions: Optional[List[str]] = None
+    required_documentation: Optional[List[str]] = Field(
+        None,
+        description="Documentation types required for this client"
+    )
     discharge_date: Optional[date] = None
     location_id: Optional[UUID] = None
+
+    @validator('required_documentation', pre=True)
+    def validate_documentation_types(cls, v):
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            v = [v]
+        for doc_type in v:
+            if doc_type not in VALID_DOCUMENTATION_TYPES:
+                raise ValueError(f"Invalid documentation type: {doc_type}. Must be one of: {VALID_DOCUMENTATION_TYPES}")
+        return v
 
 class ClientResponse(ClientBase):
     id: UUID
@@ -75,6 +116,11 @@ class ClientResponse(ClientBase):
     location_address: Optional[str] = None
     reporting_days: Optional[List[str]] = None
     last_interaction: Optional[datetime] = None
+    assigned_staff_count: int = 0
+    documentation_compliance: float = 0.0
+    recent_incidents: int = 0
+    next_appointment: Optional[datetime] = None
+    risk_level: Optional[str] = None
 
     class Config:
         from_attributes = True

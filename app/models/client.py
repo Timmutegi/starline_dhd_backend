@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Date, JSON, Integer, DECIMAL, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.core.audit_mixins import PHIAuditMixin
@@ -38,6 +38,7 @@ class Client(PHIAuditMixin, Base):
     secondary_diagnoses = Column(JSON, nullable=True)
     allergies = Column(JSON, nullable=True)
     dietary_restrictions = Column(JSON, nullable=True)
+    required_documentation = Column(ARRAY(String), nullable=True, default=["shift_note"])  # Required documentation types for this client
     location_id = Column(UUID(as_uuid=True), ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

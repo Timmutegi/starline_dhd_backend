@@ -187,9 +187,25 @@ async def clock_out(
     shift_id = clock_out_data.shift_id or clock_in_entry.shift_id
     if shift_id:
         shift = db.query(Shift).filter(Shift.id == shift_id).first()
-        if shift and shift.required_documentation:
+        if shift:
+            # Determine required documentation with priority:
+            # 1. Shift-specific override (if set and not empty)
+            # 2. Client-specific requirement (from client.required_documentation)
+            # 3. Default fallback (["shift_note"])
+            required_docs = None
+
+            if shift.required_documentation:
+                required_docs = shift.required_documentation
+            elif shift.client_id:
+                from app.models.client import Client
+                client = db.query(Client).filter(Client.id == shift.client_id).first()
+                if client and client.required_documentation:
+                    required_docs = client.required_documentation
+
+            if not required_docs:
+                required_docs = ["shift_note"]  # Default fallback
+
             # Check documentation status
-            required_docs = shift.required_documentation
             missing_docs = []
 
             for doc_type in required_docs:
@@ -197,11 +213,11 @@ async def clock_out(
 
                 if doc_type == "vitals_log" and shift.client_id:
                     from app.models.vitals_log import VitalsLog
+                    # VitalsLog.recorded_at is timezone-aware, compare by date
                     vitals = db.query(VitalsLog).filter(
                         VitalsLog.client_id == shift.client_id,
                         VitalsLog.staff_id == current_user.id,
-                        VitalsLog.created_at >= datetime.combine(shift.shift_date, shift.start_time or datetime.min.time()),
-                        VitalsLog.created_at <= datetime.now(timezone.utc).replace(tzinfo=None)
+                        func.date(VitalsLog.recorded_at) == shift.shift_date
                     ).first()
                     is_submitted = vitals is not None
 
@@ -218,10 +234,11 @@ async def clock_out(
 
                 elif doc_type == "meal_log" and shift.client_id:
                     from app.models.meal_log import MealLog
+                    # MealLog.meal_date is a DateTime, compare by date
                     meal = db.query(MealLog).filter(
                         MealLog.client_id == shift.client_id,
                         MealLog.staff_id == current_user.id,
-                        MealLog.meal_date == shift.shift_date
+                        func.date(MealLog.meal_date) == shift.shift_date
                     ).first()
                     is_submitted = meal is not None
 
@@ -236,12 +253,31 @@ async def clock_out(
 
                 elif doc_type == "activity_log" and shift.client_id:
                     from app.models.activity_log import ActivityLog
+                    # ActivityLog.activity_date is likely a DateTime, compare by date
                     activity = db.query(ActivityLog).filter(
                         ActivityLog.client_id == shift.client_id,
                         ActivityLog.staff_id == current_user.id,
-                        ActivityLog.activity_date == shift.shift_date
+                        func.date(ActivityLog.activity_date) == shift.shift_date
                     ).first()
                     is_submitted = activity is not None
+
+                elif doc_type == "sleep_log" and shift.client_id:
+                    from app.models.sleep_log import SleepLog
+                    sleep = db.query(SleepLog).filter(
+                        SleepLog.client_id == shift.client_id,
+                        SleepLog.staff_id == current_user.id,
+                        SleepLog.shift_date == shift.shift_date
+                    ).first()
+                    is_submitted = sleep is not None
+
+                elif doc_type == "bowel_movement_log" and shift.client_id:
+                    from app.models.bowel_movement_log import BowelMovementLog
+                    bowel = db.query(BowelMovementLog).filter(
+                        BowelMovementLog.client_id == shift.client_id,
+                        BowelMovementLog.staff_id == current_user.id,
+                        func.date(BowelMovementLog.recorded_at) == shift.shift_date
+                    ).first()
+                    is_submitted = bowel is not None
 
                 if not is_submitted:
                     missing_docs.append(doc_type)

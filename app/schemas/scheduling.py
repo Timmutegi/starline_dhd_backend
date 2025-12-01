@@ -119,6 +119,7 @@ class ShiftCreate(ShiftBase):
     staff_id: UUID
     client_id: Optional[UUID] = None  # Primary client for this shift
     location_id: Optional[UUID] = None
+    required_documentation: Optional[List[str]] = None  # Override client's documentation requirements for this shift
 
 class ShiftUpdate(BaseModel):
     shift_date: Optional[date] = None
