@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here")
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 360  # 6 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 60
 
     # Session Settings
-    SESSION_EXPIRE_MINUTES: int = 30
+    SESSION_EXPIRE_MINUTES: int = 360  # 6 hours (matches ACCESS_TOKEN_EXPIRE_MINUTES)
     REMEMBER_ME_DAYS: int = 30
 
     # OTP Settings
