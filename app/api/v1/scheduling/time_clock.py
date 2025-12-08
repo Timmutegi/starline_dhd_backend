@@ -282,8 +282,52 @@ async def clock_out(
                 if not is_submitted:
                     missing_docs.append(doc_type)
 
-            if missing_docs:
-                error_message = f"Cannot clock out. Please complete the following required documentation: {', '.join(missing_docs)}"
+            # Check for incomplete special requirements
+            missing_requirements = []
+            if shift.client_id:
+                from app.models.special_requirement import (
+                    SpecialRequirement, SpecialRequirementResponse,
+                    RequirementStatus as SRStatus
+                )
+
+                # Get active special requirements for this client on this shift date
+                active_requirements = db.query(SpecialRequirement).filter(
+                    and_(
+                        SpecialRequirement.client_id == shift.client_id,
+                        SpecialRequirement.organization_id == current_user.organization_id,
+                        SpecialRequirement.status == SRStatus.ACTIVE,
+                        SpecialRequirement.start_date <= shift.shift_date,
+                        SpecialRequirement.end_date >= shift.shift_date
+                    )
+                ).all()
+
+                # Check which requirements are missing responses for this shift
+                for req in active_requirements:
+                    response = db.query(SpecialRequirementResponse).filter(
+                        and_(
+                            SpecialRequirementResponse.special_requirement_id == req.id,
+                            SpecialRequirementResponse.staff_id == current_user.id,
+                            SpecialRequirementResponse.shift_id == shift.id
+                        )
+                    ).first()
+
+                    if not response:
+                        missing_requirements.append(req.title)
+
+            # Build comprehensive error message if anything is missing
+            if missing_docs or missing_requirements:
+                # Helper function to format doc types nicely (e.g., "shift_note" -> "Shift Note")
+                def format_doc_name(doc_type: str) -> str:
+                    return doc_type.replace("_", " ").title()
+
+                error_parts = []
+                if missing_docs:
+                    formatted_docs = [format_doc_name(d) for d in missing_docs]
+                    error_parts.append(f"documentation: {', '.join(formatted_docs)}")
+                if missing_requirements:
+                    error_parts.append(f"special requirements: {', '.join(missing_requirements)}")
+
+                error_message = f"Cannot clock out. Please complete the following required {' and '.join(error_parts)}"
                 logger.warning(f"Clock-out blocked for staff {staff_id}: {error_message}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,

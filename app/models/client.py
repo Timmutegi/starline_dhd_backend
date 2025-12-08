@@ -68,6 +68,7 @@ class Client(PHIAuditMixin, Base):
     sleep_logs = relationship("SleepLog", back_populates="client", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="client", cascade="all, delete-orphan")
     staff_assignments = relationship("StaffAssignment", foreign_keys="[StaffAssignment.client_id]", cascade="all, delete-orphan", overlaps="client")
+    special_requirements = relationship("SpecialRequirement", back_populates="client", cascade="all, delete-orphan")
     # meal_logs and activity_logs relationships are accessed via queries, not ORM relationships
     # to avoid circular import issues
 

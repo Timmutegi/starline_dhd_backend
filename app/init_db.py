@@ -4,6 +4,7 @@ from app.core.security import get_password_hash
 from app.models.user import User, Organization, Role, Permission, UserStatus
 from app.models.location import Location  # Import location model BEFORE client model
 from app.models.staff import Staff  # Import staff models to ensure tables are created
+from app.models.special_requirement import SpecialRequirement, SpecialRequirementResponse  # Import BEFORE client due to relationship
 from app.models.client import Client  # Import client models to ensure tables are created
 from app.models.scheduling import *  # Import scheduling models to ensure tables are created
 from app.models.audit_log import AuditLog, AuditSetting, AuditExport, ComplianceViolation  # Import audit models

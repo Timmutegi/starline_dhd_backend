@@ -27,6 +27,8 @@ from app.models.vitals_log import VitalsLog
 from app.models.meal_log import MealLog
 from app.models.activity_log import ActivityLog
 from app.models.notice import Notice
+from app.models.sleep_log import SleepLog
+from app.models.bowel_movement_log import BowelMovementLog
 from app.schemas.manager import (
     ManagerDashboardOverview,
     TeamStats,
@@ -35,6 +37,7 @@ from app.schemas.manager import (
     PendingApproval,
     StaffMemberSummary,
     ClientOversightSummary,
+    ClientDetailResponse,
     TimeOffRequestResponse,
     ApprovalActionRequest,
     StaffAssignmentCreate,
@@ -541,6 +544,547 @@ async def get_clients_oversight(
             status_code=500,
             detail=f"Failed to retrieve clients: {str(e)}"
         )
+
+
+@router.get("/clients/{client_id}", response_model=ClientDetailResponse)
+async def get_client_details(
+    client_id: str,
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed information about a specific client
+    """
+    try:
+        org_id = current_user.organization_id
+
+        # Fetch the client
+        client = db.query(Client).filter(
+            Client.id == client_id,
+            Client.organization_id == org_id
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        # Count assigned staff
+        assigned_staff_count = db.query(StaffAssignment).filter(
+            StaffAssignment.client_id == client.id,
+            StaffAssignment.is_active == True
+        ).count()
+
+        # Calculate documentation completion based on tasks
+        client_tasks_total = db.query(Task).filter(
+            Task.client_id == client.id
+        ).count()
+
+        client_tasks_completed = db.query(Task).filter(
+            Task.client_id == client.id,
+            Task.status == TaskStatusEnum.COMPLETED
+        ).count()
+
+        documentation_completion = (
+            (client_tasks_completed / client_tasks_total * 100)
+            if client_tasks_total > 0 else 100.0
+        )
+
+        # Count incidents in last 30 days
+        thirty_days_ago = date.today() - timedelta(days=30)
+        incidents_count = db.query(IncidentReport).filter(
+            IncidentReport.client_id == client.id,
+            IncidentReport.incident_date >= thirty_days_ago
+        ).count()
+
+        # Last shift note
+        last_shift_note = db.query(ShiftNote).filter(
+            ShiftNote.client_id == client.id
+        ).order_by(ShiftNote.created_at.desc()).first()
+        last_shift_note_time = last_shift_note.created_at if last_shift_note else None
+
+        # Get actual care plan status
+        latest_care_plan = db.query(CarePlan).filter(
+            CarePlan.client_id == client.id
+        ).order_by(CarePlan.created_at.desc()).first()
+        care_plan_status = latest_care_plan.status if latest_care_plan else "none"
+
+        # Get location
+        location_name = None
+        if client.location_id:
+            location = db.query(Location).filter(
+                Location.id == client.location_id
+            ).first()
+            if location:
+                location_name = location.name
+
+        # Fallback to client assignment if no direct location
+        if not location_name:
+            from app.models.client import ClientAssignment, ClientLocation
+            current_assignment = db.query(ClientAssignment).filter(
+                ClientAssignment.client_id == client.id,
+                ClientAssignment.is_current == True
+            ).first()
+            if current_assignment and current_assignment.location_id:
+                loc = db.query(ClientLocation).filter(
+                    ClientLocation.id == current_assignment.location_id
+                ).first()
+                if loc:
+                    location_name = loc.name
+
+        # Get next appointment
+        next_appointment = db.query(Appointment).filter(
+            Appointment.client_id == client.id,
+            Appointment.start_datetime > datetime.utcnow(),
+            Appointment.status != AppointmentStatus.CANCELLED
+        ).order_by(Appointment.start_datetime.asc()).first()
+
+        # Get organization name
+        from app.models.user import Organization
+        organization = db.query(Organization).filter(
+            Organization.id == client.organization_id
+        ).first()
+        organization_name = organization.name if organization else None
+
+        return ClientDetailResponse(
+            id=str(client.id),
+            client_id=client.client_id,
+            user_id=str(client.user_id) if client.user_id else None,
+            full_name=f"{client.first_name} {client.last_name}",
+            first_name=client.first_name,
+            last_name=client.last_name,
+            status=client.status,
+            date_of_birth=client.date_of_birth if hasattr(client, 'date_of_birth') else None,
+            gender=client.gender if hasattr(client, 'gender') else None,
+            email=client.email if hasattr(client, 'email') else None,
+            phone=client.phone if hasattr(client, 'phone') else None,
+            address=client.address if hasattr(client, 'address') else None,
+            emergency_contact_name=client.emergency_contact_name if hasattr(client, 'emergency_contact_name') else None,
+            emergency_contact_phone=client.emergency_contact_phone if hasattr(client, 'emergency_contact_phone') else None,
+            location_id=str(client.location_id) if client.location_id else None,
+            location_name=location_name,
+            organization_name=organization_name,
+            assigned_staff_count=assigned_staff_count,
+            documentation_completion=documentation_completion,
+            risk_level=client.risk_level if hasattr(client, 'risk_level') else None,
+            recent_incidents=incidents_count,
+            last_service_date=last_shift_note_time,
+            next_appointment=next_appointment.start_datetime if next_appointment else None,
+            care_plan_status=care_plan_status,
+            required_documentation=client.required_documentation if hasattr(client, 'required_documentation') else None,
+            created_at=client.created_at if hasattr(client, 'created_at') else None
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"ERROR in get_client_details: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve client details: {str(e)}"
+        )
+
+
+@router.get("/clients/{client_id}/vitals")
+async def get_client_vitals(
+    client_id: str,
+    limit: int = Query(50, le=100),
+    offset: int = Query(0),
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """Get vitals logs for a specific client"""
+    try:
+        org_id = current_user.organization_id
+
+        # Verify client exists and belongs to organization
+        client = db.query(Client).filter(
+            Client.id == client_id,
+            Client.organization_id == org_id
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        vitals = db.query(VitalsLog).filter(
+            VitalsLog.client_id == client_id,
+            VitalsLog.organization_id == org_id
+        ).order_by(desc(VitalsLog.recorded_at)).offset(offset).limit(limit).all()
+
+        # Get staff names
+        staff_ids = list(set([str(v.staff_id) for v in vitals if v.staff_id]))
+        staff_map = {}
+        if staff_ids:
+            staff_users = db.query(User).filter(User.id.in_(staff_ids)).all()
+            staff_map = {str(u.id): u.full_name for u in staff_users}
+
+        return [
+            {
+                "id": str(v.id),
+                "client_id": str(v.client_id),
+                "staff_id": str(v.staff_id),
+                "staff_name": staff_map.get(str(v.staff_id), "Unknown"),
+                "temperature": v.temperature,
+                "blood_pressure_systolic": v.blood_pressure_systolic,
+                "blood_pressure_diastolic": v.blood_pressure_diastolic,
+                "blood_sugar": v.blood_sugar,
+                "weight": v.weight,
+                "heart_rate": v.heart_rate,
+                "oxygen_saturation": v.oxygen_saturation,
+                "notes": v.notes,
+                "recorded_at": v.recorded_at.isoformat() if v.recorded_at else None,
+                "created_at": v.created_at.isoformat() if v.created_at else None
+            }
+            for v in vitals
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve vitals: {str(e)}")
+
+
+@router.get("/clients/{client_id}/meals")
+async def get_client_meals(
+    client_id: str,
+    limit: int = Query(50, le=100),
+    offset: int = Query(0),
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """Get meal logs for a specific client"""
+    try:
+        org_id = current_user.organization_id
+
+        client = db.query(Client).filter(
+            Client.id == client_id,
+            Client.organization_id == org_id
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        meals = db.query(MealLog).filter(
+            MealLog.client_id == client_id,
+            MealLog.organization_id == org_id
+        ).order_by(desc(MealLog.meal_date)).offset(offset).limit(limit).all()
+
+        # Get staff names
+        staff_ids = list(set([str(m.staff_id) for m in meals if m.staff_id]))
+        staff_map = {}
+        if staff_ids:
+            staff_users = db.query(User).filter(User.id.in_(staff_ids)).all()
+            staff_map = {str(u.id): u.full_name for u in staff_users}
+
+        return [
+            {
+                "id": str(m.id),
+                "client_id": str(m.client_id),
+                "staff_id": str(m.staff_id) if m.staff_id else None,
+                "staff_name": staff_map.get(str(m.staff_id), "Unknown") if m.staff_id else "Unknown",
+                "meal_type": m.meal_type.value if m.meal_type else None,
+                "meal_time": m.meal_time,
+                "food_items": m.food_items,
+                "intake_amount": m.intake_amount.value if m.intake_amount else None,
+                "percentage_consumed": m.percentage_consumed,
+                "calories": m.calories,
+                "water_intake_ml": m.water_intake_ml,
+                "other_fluids": m.other_fluids,
+                "appetite_level": m.appetite_level,
+                "assistance_required": m.assistance_required,
+                "assistance_type": m.assistance_type,
+                "refusals": m.refusals,
+                "notes": m.notes,
+                "recorded_at": m.meal_date.isoformat() if m.meal_date else None,
+                "created_at": m.created_at.isoformat() if m.created_at else None
+            }
+            for m in meals
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve meals: {str(e)}")
+
+
+@router.get("/clients/{client_id}/sleep-logs")
+async def get_client_sleep_logs(
+    client_id: str,
+    limit: int = Query(50, le=100),
+    offset: int = Query(0),
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """Get sleep logs for a specific client"""
+    try:
+        org_id = current_user.organization_id
+
+        client = db.query(Client).filter(
+            Client.id == client_id,
+            Client.organization_id == org_id
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        sleep_logs = db.query(SleepLog).filter(
+            SleepLog.client_id == client_id,
+            SleepLog.organization_id == org_id
+        ).order_by(desc(SleepLog.recorded_at)).offset(offset).limit(limit).all()
+
+        # Get staff names
+        staff_ids = list(set([str(s.staff_id) for s in sleep_logs if s.staff_id]))
+        staff_map = {}
+        if staff_ids:
+            staff_users = db.query(User).filter(User.id.in_(staff_ids)).all()
+            staff_map = {str(u.id): u.full_name for u in staff_users}
+
+        return [
+            {
+                "id": str(s.id),
+                "client_id": str(s.client_id),
+                "staff_id": str(s.staff_id),
+                "staff_name": staff_map.get(str(s.staff_id), "Unknown"),
+                "shift_date": s.shift_date.isoformat() if s.shift_date else None,
+                "sleep_periods": s.sleep_periods,
+                "total_sleep_minutes": s.total_sleep_minutes,
+                "notes": s.notes,
+                "recorded_at": s.recorded_at.isoformat() if s.recorded_at else None,
+                "created_at": s.created_at.isoformat() if s.created_at else None
+            }
+            for s in sleep_logs
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve sleep logs: {str(e)}")
+
+
+@router.get("/clients/{client_id}/bowel-movements")
+async def get_client_bowel_movements(
+    client_id: str,
+    limit: int = Query(50, le=100),
+    offset: int = Query(0),
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """Get bowel movement logs for a specific client"""
+    try:
+        org_id = current_user.organization_id
+
+        client = db.query(Client).filter(
+            Client.id == client_id,
+            Client.organization_id == org_id
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        bowel_logs = db.query(BowelMovementLog).filter(
+            BowelMovementLog.client_id == client_id,
+            BowelMovementLog.organization_id == org_id
+        ).order_by(desc(BowelMovementLog.recorded_at)).offset(offset).limit(limit).all()
+
+        # Get staff names
+        staff_ids = list(set([str(b.staff_id) for b in bowel_logs if b.staff_id]))
+        staff_map = {}
+        if staff_ids:
+            staff_users = db.query(User).filter(User.id.in_(staff_ids)).all()
+            staff_map = {str(u.id): u.full_name for u in staff_users}
+
+        return [
+            {
+                "id": str(b.id),
+                "client_id": str(b.client_id),
+                "staff_id": str(b.staff_id),
+                "staff_name": staff_map.get(str(b.staff_id), "Unknown"),
+                "stool_type": b.stool_type,
+                "stool_color": b.stool_color,
+                "additional_information": b.additional_information,
+                "recorded_at": b.recorded_at.isoformat() if b.recorded_at else None,
+                "created_at": b.created_at.isoformat() if b.created_at else None
+            }
+            for b in bowel_logs
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve bowel movements: {str(e)}")
+
+
+@router.get("/clients/{client_id}/activities")
+async def get_client_activities(
+    client_id: str,
+    limit: int = Query(50, le=100),
+    offset: int = Query(0),
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """Get activity logs for a specific client"""
+    try:
+        org_id = current_user.organization_id
+
+        client = db.query(Client).filter(
+            Client.id == client_id,
+            Client.organization_id == org_id
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        activities = db.query(ActivityLog).filter(
+            ActivityLog.client_id == client_id,
+            ActivityLog.organization_id == org_id
+        ).order_by(desc(ActivityLog.activity_date)).offset(offset).limit(limit).all()
+
+        # Get staff names
+        staff_ids = list(set([str(a.staff_id) for a in activities if a.staff_id]))
+        staff_map = {}
+        if staff_ids:
+            staff_users = db.query(User).filter(User.id.in_(staff_ids)).all()
+            staff_map = {str(u.id): u.full_name for u in staff_users}
+
+        return [
+            {
+                "id": str(a.id),
+                "client_id": str(a.client_id),
+                "staff_id": str(a.staff_id) if a.staff_id else None,
+                "staff_name": staff_map.get(str(a.staff_id), "Unknown") if a.staff_id else "Unknown",
+                "activity_type": a.activity_type.value if a.activity_type else None,
+                "activity_name": a.activity_name,
+                "duration_minutes": a.duration_minutes,
+                "participation_level": a.participation_level.value if a.participation_level else None,
+                "mood_before": a.mood_before.value if a.mood_before else None,
+                "mood_after": a.mood_after.value if a.mood_after else None,
+                "notes": a.staff_notes,
+                "recorded_at": a.activity_date.isoformat() if a.activity_date else None,
+                "created_at": a.created_at.isoformat() if a.created_at else None
+            }
+            for a in activities
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve activities: {str(e)}")
+
+
+@router.get("/clients/{client_id}/shift-notes")
+async def get_client_shift_notes(
+    client_id: str,
+    limit: int = Query(50, le=100),
+    offset: int = Query(0),
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """Get shift notes for a specific client"""
+    try:
+        org_id = current_user.organization_id
+
+        client = db.query(Client).filter(
+            Client.id == client_id,
+            Client.organization_id == org_id
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        shift_notes = db.query(ShiftNote).filter(
+            ShiftNote.client_id == client_id,
+            ShiftNote.organization_id == org_id
+        ).order_by(desc(ShiftNote.created_at)).offset(offset).limit(limit).all()
+
+        # Get staff names for shift notes
+        staff_ids = list(set([str(sn.staff_id) for sn in shift_notes if sn.staff_id]))
+        staff_map = {}
+        if staff_ids:
+            staff_users = db.query(User).filter(User.id.in_(staff_ids)).all()
+            staff_map = {str(u.id): u.full_name for u in staff_users}
+
+        return [
+            {
+                "id": str(sn.id),
+                "client_id": str(sn.client_id),
+                "staff_id": str(sn.staff_id) if sn.staff_id else None,
+                "staff_name": staff_map.get(str(sn.staff_id), "Unknown"),
+                "shift_date": sn.shift_date.isoformat() if sn.shift_date else None,
+                "shift_time": sn.shift_time if hasattr(sn, 'shift_time') else None,
+                "narrative": sn.narrative if hasattr(sn, 'narrative') else None,
+                "challenges_faced": sn.challenges_faced if hasattr(sn, 'challenges_faced') else None,
+                "support_required": sn.support_required if hasattr(sn, 'support_required') else None,
+                "observations": sn.observations if hasattr(sn, 'observations') else None,
+                "created_at": sn.created_at.isoformat() if sn.created_at else None
+            }
+            for sn in shift_notes
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"ERROR in get_client_shift_notes: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve shift notes: {str(e)}")
+
+
+@router.get("/clients/{client_id}/incidents")
+async def get_client_incidents(
+    client_id: str,
+    limit: int = Query(50, le=100),
+    offset: int = Query(0),
+    current_user: User = Depends(get_manager_or_above),
+    db: Session = Depends(get_db)
+):
+    """Get incident reports for a specific client"""
+    try:
+        org_id = current_user.organization_id
+
+        client = db.query(Client).filter(
+            Client.id == client_id,
+            Client.organization_id == org_id
+        ).first()
+
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+
+        incidents = db.query(IncidentReport).filter(
+            IncidentReport.client_id == client_id,
+            IncidentReport.organization_id == org_id
+        ).order_by(desc(IncidentReport.incident_date)).offset(offset).limit(limit).all()
+
+        # Get staff names for incidents
+        staff_ids = list(set([str(i.staff_id) for i in incidents if i.staff_id]))
+        staff_map = {}
+        if staff_ids:
+            staff_users = db.query(User).filter(User.id.in_(staff_ids)).all()
+            staff_map = {str(u.id): u.full_name for u in staff_users}
+
+        return [
+            {
+                "id": str(i.id),
+                "client_id": str(i.client_id),
+                "staff_id": str(i.staff_id) if i.staff_id else None,
+                "reporter_name": staff_map.get(str(i.staff_id), "Unknown") if i.staff_id else "Unknown",
+                "incident_date": i.incident_date.isoformat() if i.incident_date else None,
+                "incident_time": i.incident_time,
+                "incident_type": i.incident_type.value if i.incident_type else None,
+                "severity": i.severity.value if i.severity else None,
+                "status": i.status.value if i.status else None,
+                "description": i.description,
+                "action_taken": i.action_taken,
+                "location": i.location,
+                "witnesses": i.witnesses,
+                "follow_up_required": i.follow_up_required,
+                "follow_up_notes": i.follow_up_notes,
+                "created_at": i.created_at.isoformat() if i.created_at else None,
+                "resolved_at": i.resolved_at.isoformat() if i.resolved_at else None
+            }
+            for i in incidents
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"ERROR in get_client_incidents: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve incidents: {str(e)}")
+
 
 @router.get("/time-off-requests", response_model=List[TimeOffRequestResponse])
 async def get_time_off_requests(

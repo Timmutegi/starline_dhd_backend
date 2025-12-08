@@ -427,6 +427,30 @@ async def get_recent_entries(
                 "created_at": make_aware(created_at)
             })
 
+        # Get recent special requirement responses
+        from app.models.special_requirement import SpecialRequirementResponse, SpecialRequirement
+
+        special_req_responses = db.query(SpecialRequirementResponse).filter(
+            SpecialRequirementResponse.staff_id == current_user.id
+        ).order_by(SpecialRequirementResponse.created_at.desc()).limit(limit).all()
+
+        for response in special_req_responses:
+            client = db.query(Client).filter(Client.id == response.client_id).first()
+            requirement = db.query(SpecialRequirement).filter(
+                SpecialRequirement.id == response.special_requirement_id
+            ).first()
+            created_at = response.created_at if response.created_at else datetime.now()
+
+            recent_entries.append({
+                "date": created_at.strftime("%a, %b %d"),
+                "time_in_kenya": created_at.strftime("%I:%M %p"),
+                "client_name": client.full_name if client else "Unknown",
+                "location": get_client_location(client),
+                "activity_type": f"Special Req: {requirement.title[:20]}..." if requirement and len(requirement.title) > 20 else f"Special Req: {requirement.title}" if requirement else "Special Requirement",
+                "status": "Completed",
+                "created_at": make_aware(created_at)
+            })
+
         # Sort by created_at and limit to requested count
         recent_entries.sort(key=lambda x: x["created_at"], reverse=True)
         recent_entries = recent_entries[:limit]

@@ -11,8 +11,9 @@ from app.core.database import engine, Base
 from app.middleware.audit_middleware import AuditMiddleware
 
 # Import all models to ensure they're registered with SQLAlchemy before table creation
+# NOTE: special_requirement must be imported before client due to relationship dependencies
 from app.models import (
-    user, bowel_movement_log, sleep_log, client, staff, scheduling, task as task_model,
+    user, bowel_movement_log, sleep_log, special_requirement, client, staff, scheduling, task as task_model,
     vitals_log, shift_note, incident_report, notification as notification_model,
     audit_log, meal_log, activity_log, training, notice, location
 )
@@ -27,6 +28,7 @@ from app.api.v1.scheduling import time_clock, appointments, availability, calend
 from app.api.v1 import dashboard, documentation, notifications, tasks, admin, manager, audit, client_portal, locations
 from app.api.v1 import training as training_api, notices as notices_api, reports, documents as documents_api
 from app.api.v1 import help_requests as help_requests_api
+from app.api.v1 import special_requirements as special_requirements_api
 
 
 
@@ -265,6 +267,12 @@ app.include_router(
     help_requests_api.router,
     prefix=f"{settings.API_V1_STR}/help-requests",
     tags=["Help Requests"]
+)
+
+app.include_router(
+    special_requirements_api.router,
+    prefix=f"{settings.API_V1_STR}/special-requirements",
+    tags=["Special Requirements"]
 )
 
 if __name__ == "__main__":

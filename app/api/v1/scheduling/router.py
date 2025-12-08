@@ -419,6 +419,57 @@ async def get_current_shift(
 
         can_clock_out = len(missing_documents) == 0
 
+    # Check for active special requirements for this client
+    special_requirements_data = []
+    pending_special_requirements = []
+
+    if current_shift.client_id:
+        from app.models.special_requirement import (
+            SpecialRequirement, SpecialRequirementResponse as SRResponse,
+            RequirementStatus as SRStatus
+        )
+        from sqlalchemy import and_
+
+        # Get active special requirements for this client on this shift date
+        active_requirements = db.query(SpecialRequirement).filter(
+            and_(
+                SpecialRequirement.client_id == current_shift.client_id,
+                SpecialRequirement.organization_id == current_user.organization_id,
+                SpecialRequirement.status == SRStatus.ACTIVE,
+                SpecialRequirement.start_date <= current_shift.shift_date,
+                SpecialRequirement.end_date >= current_shift.shift_date
+            )
+        ).all()
+
+        for req in active_requirements:
+            # Check if DSP has already responded for this shift
+            response = db.query(SRResponse).filter(
+                and_(
+                    SRResponse.special_requirement_id == req.id,
+                    SRResponse.staff_id == current_user.id,
+                    SRResponse.shift_id == current_shift.id
+                )
+            ).first()
+
+            is_completed = response is not None
+            req_data = {
+                "id": str(req.id),
+                "title": req.title,
+                "instructions": req.instructions,
+                "action_plan_items": req.action_plan_items,
+                "priority": req.priority.value if hasattr(req.priority, 'value') else req.priority,
+                "is_completed": is_completed,
+                "response_id": str(response.id) if response else None
+            }
+            special_requirements_data.append(req_data)
+
+            if not is_completed:
+                pending_special_requirements.append(req.title)
+
+        # Update can_clock_out to include special requirements check
+        if len(pending_special_requirements) > 0:
+            can_clock_out = False
+
     return {
         "has_active_shift": True,
         "shift": {
@@ -454,6 +505,13 @@ async def get_current_shift(
             "status": documentation_status,
             "can_clock_out": can_clock_out,
             "missing_documents": missing_documents
+        },
+        "special_requirements": {
+            "items": special_requirements_data,
+            "total": len(special_requirements_data),
+            "pending": len(pending_special_requirements),
+            "completed": len(special_requirements_data) - len(pending_special_requirements),
+            "pending_titles": pending_special_requirements
         }
     }
 

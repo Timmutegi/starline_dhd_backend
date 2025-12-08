@@ -67,6 +67,36 @@ class ClientOversightSummary(BaseModel):
     care_plan_status: Optional[str] = Field(None, description="Care plan status")
     required_documentation: Optional[List[str]] = Field(default=None, description="Required documentation types for this client")
 
+class ClientDetailResponse(BaseModel):
+    """Extended client details for manager view"""
+    id: str = Field(..., description="Client UUID")
+    client_id: str = Field(..., description="Client code (human readable)")
+    user_id: Optional[str] = Field(None, description="User ID if client has account")
+    full_name: str = Field(..., description="Client full name")
+    first_name: str = Field(..., description="Client first name")
+    last_name: str = Field(..., description="Client last name")
+    status: str = Field(..., description="Client status")
+    date_of_birth: Optional[date] = Field(None, description="Date of birth")
+    gender: Optional[str] = Field(None, description="Gender")
+    email: Optional[str] = Field(None, description="Email address")
+    phone: Optional[str] = Field(None, description="Phone number")
+    address: Optional[str] = Field(None, description="Address")
+    emergency_contact_name: Optional[str] = Field(None, description="Emergency contact name")
+    emergency_contact_phone: Optional[str] = Field(None, description="Emergency contact phone")
+    location_id: Optional[str] = Field(None, description="Client location UUID")
+    location_name: Optional[str] = Field(None, description="Client location name")
+    organization_name: Optional[str] = Field(None, description="Organization name")
+    assigned_staff_count: int = Field(..., description="Number of assigned staff")
+    documentation_completion: float = Field(..., description="Documentation completion %")
+    risk_level: Optional[str] = Field(None, description="Client risk level")
+    recent_incidents: int = Field(default=0, description="Number of recent incidents")
+    last_service_date: Optional[datetime] = Field(None, description="Last service date")
+    next_appointment: Optional[datetime] = Field(None, description="Next scheduled appointment")
+    care_plan_status: Optional[str] = Field(None, description="Care plan status")
+    required_documentation: Optional[List[str]] = Field(default=None, description="Required documentation types")
+    created_at: Optional[datetime] = Field(None, description="When client was created")
+
+
 class PendingApproval(BaseModel):
     id: str = Field(..., description="Approval item ID")
     type: str = Field(..., description="Type of approval (time_off, shift_note, incident)")
